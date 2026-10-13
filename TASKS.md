@@ -65,7 +65,7 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 cerrado; siguiente F2b-2 (reconciliación). F2b-3 (guarda
+  y revisados. F2b-1 cerrado; F2b-2 hecho, pendiente de Codex. F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -627,3 +627,27 @@ interfaz Gateway (query/submit); solo existe un servidor simulado en pruebas.
   Recordatorios: GatewayRejected solo para rechazos definitivos; tres "no
   existe" obsoletos no prueban por sí solos la no ejecución (de ahí la
   reconciliación). 514 passed.
+
+## Registro T021 F2b-2 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/demo_reconcile.py (nuevo),
+tests/test_demo_reconcile.py (nuevo), DECISIONS.md (precisión en D030),
+readme.md. Solo lectura y sin red en las pruebas (cliente falso).
+- Línea base: cero órdenes abiertas, historial < 1000 por símbolo; se
+  guarda una sola vez con hash (save_baseline nunca sobrescribe; una
+  nueva requiere --rebaseline aprobado, aún no implementado).
+- fetch_after: cursores inclusivos, descarta lo ya visto, pagina hasta
+  una página < 1000; rechaza páginas desordenadas, con repetidos, con ids
+  no enteros o que empiezan antes del cursor; los huecos numéricos no
+  cuentan como falta de datos.
+- reconcile_data (pura): se detiene ante órdenes sin resolver en el
+  registro, órdenes abiertas (cancelar requiere (b)), órdenes ajenas o
+  bt- fuera del registro (registro perdido), órdenes del registro que no
+  están en el exchange, estado o executedQty distintos, fills que no
+  suman executedQty/cummulativeQuoteQty, fills de órdenes ausentes,
+  comisión fuera de base/USDT/BNB, números no válidos, y saldos fuera de
+  tolerancia (base 2 x stepSize, USDT 0,01, BNB 0,00000002, el resto 0).
+  Si todo cuadra: posiciones reales por activo para decide/check_limits
+  (presupuesto 1000, polvo < stepSize = sin posición) y la CoverageProof.
+- Interpretación de D030 anotada allí: activos precargados admitidos solo
+  si siguen exactamente como en la línea base.
+- Cálculos con Decimal desde los textos de Binance. 542 passed.

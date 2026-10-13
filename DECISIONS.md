@@ -656,7 +656,10 @@ rest-api/general-api-information, errors, filters):
   otro activo de comisión admitido), 0,00000002 (2 unidades de 8
   decimales, la precisión de los saldos de la cuenta). Cualquier otro
   activo con saldo o comisión, o una precisión desconocida, detiene el
-  proceso.
+  proceso. Precisión (F2b-2, 2026-10-13): una cuenta demo puede traer
+  saldos precargados de otros activos; se admiten solo si ya estaban en
+  la línea base y siguen EXACTAMENTE iguales (tolerancia cero). Una
+  comisión en otro activo, un activo nuevo o cualquier cambio detienen.
 - Toda orden con prefijo bt- que no esté en el ledger, toda orden ajena
   y toda diferencia de saldo fuera de tolerancia detienen el proceso.
 - El bot no corrige nada por su cuenta. El usuario investiga, se
