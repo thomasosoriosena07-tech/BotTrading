@@ -172,5 +172,22 @@ Estado: Aprobada (propuesta aceptada por defecto por el usuario)
 - Errores de configuración o de datos en la CLI: mensaje en stderr y
   código de salida 2, sin traza.
 
+## D017 — Fase 2: búsqueda de ventaja con validación fuera de muestra
+Estado: Aprobada por el usuario (2026-10-13); plan pendiente de
+revisión de Codex.
+
+- Objetivo del usuario: mejores resultados netos. Se acepta con una
+  condición: toda mejora se mide fuera de la muestra usada para
+  elegirla, con costes y frente a buy-and-hold.
+- Se mantienen D001 y D006: sin órdenes reales ni claves API.
+- Datos reales: CSV públicos de Binance descargados a mano por el
+  usuario; no se versionan (data/ sigue ignorado).
+- Acceso a red (solo T019, datos públicos de mercado): requiere una
+  aprobación específica antes de implementarlo.
+- Riesgo asumido: aunque un resultado out-of-sample sea bueno, no
+  garantiza rentabilidad futura; se informará siempre así.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
+- Fase 2: proporción ajuste/prueba y número de ventanas walk-forward
+  (se propondrán en T014).

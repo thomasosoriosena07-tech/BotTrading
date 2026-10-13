@@ -14,12 +14,38 @@
 - [x] T011 — Revisión independiente con Codex.
 - [x] T012 — Ejecutar el MVP completo con datos de ejemplo.
 
+## Fase 2 (ver PROJECT_SPEC.md "Fase 2" y DECISIONS.md D017)
+- [ ] T013 — Importar CSV de klines de Binance.
+  Aceptación: lee el formato sin cabecera (open_time ms, OHLCV, ...)
+  con la misma validación que load_ohlcv_csv; detecta epoch en ms o
+  µs; pruebas con archivos sintéticos con ese formato.
+- [ ] T014 — División temporal y walk-forward.
+  Aceptación: tramos de ajuste/prueba sin solapamiento; las medias
+  del tramo de prueba se calientan con datos anteriores sin operar en
+  ellos; prueba de que cambiar el tramo de prueba no altera la
+  selección de parámetros.
+- [ ] T015 — Búsqueda acotada de parámetros en el tramo de ajuste.
+  Aceptación: rejilla explícita y pequeña; todas las combinaciones y
+  sus métricas quedan registradas; criterio de selección fijado antes
+  de ejecutar; el tramo de prueba se evalúa una sola vez.
+- [ ] T016 — Hasta dos estrategias adicionales.
+  Aceptación: misma interfaz de señales; prueba de prefijos (no
+  look-ahead) para cada una; costes y ejecución idénticos.
+- [ ] T017 — Informe comparativo out-of-sample.
+  Aceptación: in-sample y out-of-sample por separado, número de
+  combinaciones probadas, buy-and-hold en el mismo tramo, avisos.
+- [ ] T018 — Revisión independiente de la fase 2 con Codex.
+- [ ] T019 — Paper trading con datos públicos en tiempo real.
+  BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
+  órdenes; las pruebas siguen sin red.
+
 ## Reglas
 - Marcar una tarea como completada solo después de verificarla.
 - No saltar tareas bloqueadas sin documentar el motivo.
-- Registrar nuevas tareas solo si aportan valor al MVP.
+- Registrar nuevas tareas solo si aportan valor al proyecto.
 - Indicar archivos relevantes y criterios de aceptación.
-- MVP completado (T001-T012). Siguiente fase: pendiente de aprobación del usuario.
+- MVP completado (T001-T012). Fase 2 aprobada por el usuario; plan
+  pendiente de revisión de Codex antes de empezar T013.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,

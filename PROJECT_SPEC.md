@@ -87,3 +87,32 @@ El MVP estará listo cuando:
 - no se utilicen datos futuros;
 - se genere un informe documentado;
 - la ejecución sea simulada por defecto.
+
+## Fase 2 — Búsqueda de ventaja con validación (aprobada 2026-10-13)
+Objetivo del usuario: encontrar estrategias con mejores resultados netos.
+Se persigue sin relajar la integridad: una mejora solo cuenta si se
+mantiene fuera de la muestra usada para elegirla.
+
+Alcance:
+1. Importar CSV históricos públicos de Binance descargados manualmente
+   por el usuario (formato klines). Sin claves API ni descargas en las
+   pruebas.
+2. Dividir los datos en tramos temporales: ajuste (in-sample) y prueba
+   (out-of-sample), y evaluación walk-forward.
+3. Búsqueda acotada de parámetros solo en el tramo de ajuste,
+   registrando todas las combinaciones probadas.
+4. Como máximo dos estrategias adicionales, con las mismas reglas de
+   ejecución, costes y pruebas de no look-ahead.
+5. Informe comparativo out-of-sample frente a buy-and-hold.
+6. Paper trading con datos públicos en tiempo real: solo tras una
+   aprobación específica del acceso a red (D017).
+
+Sigue fuera de alcance: órdenes reales, claves API, apalancamiento,
+cortos, margen y promesas de rentabilidad.
+
+Criterios de aceptación de la fase 2:
+- los parámetros se eligen sin ver el tramo de prueba;
+- el informe muestra resultados in-sample y out-of-sample por separado,
+  el número de combinaciones probadas y la comparación con buy-and-hold;
+- un resultado out-of-sample peor que buy-and-hold se informa igual;
+- las pruebas pasan sin red.
