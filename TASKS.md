@@ -12,14 +12,14 @@
 - [x] T009 — Generar informe reproducible.
 - [x] T010 — Añadir pruebas de integración y documentación.
 - [x] T011 — Revisión independiente con Codex.
-- [ ] T012 — Ejecutar el MVP completo con datos de ejemplo.
+- [x] T012 — Ejecutar el MVP completo con datos de ejemplo.
 
 ## Reglas
 - Marcar una tarea como completada solo después de verificarla.
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T012.
+- MVP completado (T001-T012). Siguiente fase: pendiente de aprobación del usuario.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -170,3 +170,28 @@ Supuestos y limitaciones).
   (prueba de informe idéntico desde otra carpeta); run_backtest valida
   volumen y coherencia high/low con validate_candle (4 pruebas).
 - `.venv\Scripts\python -m pytest -q` -> 181 passed.
+
+## Registro T012 (Claude Code, 2026-10-13)
+Clon limpio del commit 5ea428f en un directorio temporal fuera del
+repositorio y de OneDrive:
+- `python -m venv .venv` + `pip install -e ".[dev]"` -> OK.
+- `python -m pytest -q -p no:cacheprovider` -> 181 passed.
+- `python -m bottrading --csv examples/synthetic_daily.csv` dos veces
+  -> código 0, hashes idénticos; y también idénticos a la ejecución en
+  la carpeta original (informe independiente de la ubicación):
+  report.md  4b04ea3d524d8d1a37ff572a10f9c637d3a65da78a7baa73b7fd40fe65cc6447
+  trades.csv 1130c2462d8ea44046ac02fa083e91a6aa02cfcf15a12d41182de48887a2a3b2
+  equity.csv d6fc2c8719d6e0f19e041a7bcf589250dccb7ef1070be9e388879fbfc7c17a82
+- CSV de ejemplo en el clon: SHA-256 e08955d1... (igual al original).
+- Resultado (datos SINTÉTICOS, SMA 10/30, costes por defecto):
+  estrategia -8.93 % neto, buy-and-hold -0.90 %; 28 operaciones,
+  342.32 en costes. Sin valor predictivo sobre mercados reales.
+
+Criterios de aceptación de PROJECT_SPEC.md:
+- [x] Instalable en un entorno virtual limpio.
+- [x] Las pruebas pasan (181).
+- [x] El dataset de ejemplo produce resultados reproducibles.
+- [x] Las operaciones incluyen comisiones y slippage.
+- [x] Sin datos futuros (pruebas de prefijos y de recorte).
+- [x] Se genera un informe documentado.
+- [x] Ejecución simulada por defecto; sin red, claves ni órdenes reales.
