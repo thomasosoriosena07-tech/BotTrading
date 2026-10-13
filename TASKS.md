@@ -509,3 +509,17 @@ tests/test_execution.py (nuevo), readme.md. paper.py sin cambios. Sin red.
   ancla (se salta si no hay data/); límites justo por debajo, en y por
   encima; compra tras ganancia (1200 -> 1000) y tras pérdida (800).
   397 passed, 0 skipped; paper/ sin cambios (git status limpio).
+
+- Revisión de Codex de F1 (transmitida por el usuario): no cerrar F1. Corregido:
+  run_local con budget parte de 1000 (no del capital de paper) y recompra
+  tras pérdida con lo que queda; check_limits acumula las órdenes ya
+  registradas del día (already_today), exige coherencia con la posición
+  confirmada (compra solo sin posición y sin superar el efectivo; venta
+  exactamente de la cantidad poseída) y, de forma conservadora, una venta
+  del mismo día no libera exposición; run_local valida velas y señales
+  como run_backtest; la paridad real se compara byte a byte con el
+  serializador del diario; el hash de paper/ es recursivo; el bloqueo de
+  red impide además crear sockets, sendto/sendmsg y socketpair, y su
+  alcance (no es aislamiento) queda escrito en conftest.py. Importar
+  _buy/_sell/_validate_inputs se mantiene como provisional (aceptado por
+  Codex) hasta una interfaz pública común. 404 passed, 0 skipped.

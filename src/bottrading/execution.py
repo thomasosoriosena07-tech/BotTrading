@@ -16,7 +16,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 
-from bottrading.backtest import Trade, _buy, _sell
+# Helpers internos del motor: reutilización provisional para garantizar la
+# paridad con D014 (revisión de Codex); antes de una API estable se expondrá
+# una interfaz pública común con las mismas pruebas.
+from bottrading.backtest import Trade, _buy, _sell, _validate_inputs
 from bottrading.config import BacktestConfig
 from bottrading.crossasset import CONFIG, FROZEN_CANDIDATE
 from bottrading.data import Candle
@@ -86,34 +89,56 @@ def decide(symbol: str, signal: Signal, signal_time: datetime, holding: Holding,
     return None
 
 
-def check_limits(intents: Sequence[OrderIntent], holdings: dict[str, Holding]) -> None:
-    """Lanza LimitExceeded si las intenciones de un día superan algún límite.
+def check_limits(intents: Sequence[OrderIntent], holdings: dict[str, Holding],
+                 already_today: Sequence[OrderIntent] = ()) -> None:
+    """Lanza LimitExceeded si las intenciones nuevas no caben en los límites.
 
-    Al superarse un límite no se reduce ninguna orden: no se envía nada
-    ese día (D030, punto 2).
+    `holdings` refleja solo ejecuciones confirmadas; `already_today` son las
+    órdenes ya registradas en el ledger para el mismo día, en cualquier
+    estado. Los conteos son acumulados (revisión de Codex). Al superarse un
+    límite no se reduce ninguna orden: no se envía nada ese día (D030).
+
+    Conservador: una venta del mismo día NO libera exposición (no consta
+    confirmada al decidir). Con 1000 por activo y 3 activos no hace falta.
     """
-    days = {intent.signal_time.date() for intent in intents}
+    every = [*already_today, *intents]
+    days = {intent.signal_time.date() for intent in every}
     if len(days) > 1:
         raise LimitExceeded(f"intenciones de varios días: {sorted(days)}")
-    unknown = sorted({i.symbol for i in intents if i.symbol not in DEMO_SYMBOLS})
+    unknown = sorted({i.symbol for i in every if i.symbol not in DEMO_SYMBOLS})
     if unknown:
         raise LimitExceeded(f"símbolos no permitidos: {unknown}")
-    per_symbol = Counter(intent.symbol for intent in intents)
+    per_symbol = Counter(intent.symbol for intent in every)
     repeated = sorted(s for s, n in per_symbol.items() if n > MAX_ORDERS_PER_SYMBOL_PER_DAY)
     if repeated:
         raise LimitExceeded(f"más de {MAX_ORDERS_PER_SYMBOL_PER_DAY} orden por símbolo: {repeated}")
-    if len(intents) > MAX_ORDERS_PER_DAY:
-        raise LimitExceeded(f"{len(intents)} órdenes; máximo {MAX_ORDERS_PER_DAY} por día")
-    buys = [i for i in intents if i.side is Signal.BUY]
-    for intent in buys:
+    if len(every) > MAX_ORDERS_PER_DAY:
+        raise LimitExceeded(f"{len(every)} órdenes; máximo {MAX_ORDERS_PER_DAY} por día")
+    for intent in intents:
+        _check_against_holding(intent, holdings.get(intent.symbol, Holding(0.0)))
+    exposure = sum(h.cost for h in holdings.values())
+    exposure += sum(i.quote_amount for i in every if i.side is Signal.BUY
+                    and holdings.get(i.symbol, Holding(0.0)).quantity == 0)
+    if exposure > MAX_EXPOSURE_AT_COST:
+        raise LimitExceeded(f"exposición a coste {exposure} USDT; máximo {MAX_EXPOSURE_AT_COST}")
+
+
+def _check_against_holding(intent: OrderIntent, holding: Holding) -> None:
+    """La intención debe ser coherente con la posición confirmada."""
+    if intent.side is Signal.BUY:
         if intent.quote_amount is None or not 0 < intent.quote_amount <= BUDGET_PER_ASSET:
             raise LimitExceeded(f"{intent.symbol}: compra de {intent.quote_amount} USDT; "
                                 f"máximo {BUDGET_PER_ASSET}")
-    sold = {i.symbol for i in intents if i.side is Signal.SELL}
-    exposure = sum(h.cost for s, h in holdings.items() if s not in sold)
-    exposure += sum(intent.quote_amount for intent in buys)
-    if exposure > MAX_EXPOSURE_AT_COST:
-        raise LimitExceeded(f"exposición a coste {exposure} USDT; máximo {MAX_EXPOSURE_AT_COST}")
+        if holding.quantity != 0:
+            raise LimitExceeded(f"{intent.symbol}: compra con posición abierta")
+        if intent.quote_amount > holding.cash:
+            raise LimitExceeded(f"{intent.symbol}: compra mayor que el efectivo del ledger")
+    elif intent.side is Signal.SELL:
+        if holding.quantity <= 0 or intent.quantity != holding.quantity:
+            raise LimitExceeded(f"{intent.symbol}: venta de {intent.quantity} con posición "
+                                f"{holding.quantity}")
+    else:
+        raise LimitExceeded(f"{intent.symbol}: intención sin lado de orden")
 
 
 def fill_locally(config: BacktestConfig, intent: OrderIntent, holding: Holding,
@@ -148,7 +173,10 @@ def run_local(
 
     Como evaluate_segment (D020): señales causales con todas las velas
     hasta `end` y herencia de la posición si la última señal anterior a
-    `start` es BUY (se compra a la apertura de `start`).
+    `start` es BUY (se compra a la apertura de `start`). Sin `budget`
+    (paper, D027) parte de config.initial_capital y reinvierte; con
+    `budget` (D030) parte de ese presupuesto y no reinvierte ganancias.
+    Velas y señales se validan como en run_backtest.
     """
     end = len(candles) if end is None else end
     if not 0 <= start < end <= len(candles):
@@ -157,10 +185,9 @@ def run_local(
         raise ValueError("run_local requiere max_position_fraction = 1 (el tamaño lo fija budget)")
     history = candles[:end]
     signals = signal_function([candle.close for candle in history])
-    if len(signals) != len(history):
-        raise ValueError("la función de señales debe devolver una señal por vela")
+    _validate_inputs(history, signals, config)
 
-    holding = Holding(float(config.initial_capital))
+    holding = Holding(float(config.initial_capital if budget is None else budget))
     pending = None
     for index in range(start - 1, -1, -1):
         if signals[index] is not Signal.HOLD:
