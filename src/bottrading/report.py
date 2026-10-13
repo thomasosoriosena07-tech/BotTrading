@@ -7,17 +7,27 @@ Escribe en un directorio:
 - equity.csv: curva de capital de la estrategia y de buy-and-hold.
 
 Mismas entradas -> mismos archivos byte a byte (sin fecha de ejecución).
+
+write_selection_report (T016) escribe selection.md y trials.csv con la
+selección walk-forward, sin métricas del holdout final.
 """
+
+from __future__ import annotations
 
 import csv
 import hashlib
+import statistics
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from bottrading.backtest import BacktestResult
 from bottrading.binance import verify_checksum
 from bottrading.data import Candle
 from bottrading.metrics import Comparison, Metrics, compute_metrics, irregular_gaps
+
+if TYPE_CHECKING:  # solo tipos: walkforward importa este módulo
+    from bottrading.walkforward import SelectionResult, WindowScore
 
 DISCLAIMER = (
     "**Simulación educativa.** Estos resultados no representan operaciones "
@@ -149,6 +159,154 @@ def _checksum_label(path: Path) -> str:
 
 def file_sha256(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def write_selection_report(
+    out_dir: Path,
+    *,
+    data_paths: Sequence[Path],
+    candles: Sequence[Candle],
+    result: SelectionResult,
+) -> dict[str, Path]:
+    """Escribe selection.md y trials.csv (todas las pruebas, D021)."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {"selection": out_dir / "selection.md", "trials": out_dir / "trials.csv"}
+    text = render_selection_markdown(
+        data_paths=[Path(p) for p in data_paths], candles=candles, result=result)
+    paths["selection"].write_text(text, encoding="utf-8", newline="\n")
+    _write_trials(paths["trials"], result)
+    return paths
+
+
+def render_selection_markdown(
+    *, data_paths: Sequence[Path], candles: Sequence[Candle], result: SelectionResult
+) -> str:
+    plan, winner = result.plan, result.winner
+
+    def day(index: int) -> str:
+        return candles[index].timestamp.date().isoformat()
+
+    numbers = [w.number for w in plan.windows]
+    header = ("| # | Combinación | Mediana Sharpe | Mediana drawdown | Mediana retorno "
+              "| Mediana volatilidad | "
+              + " | ".join(f"Sharpe V{n}" for n in numbers) + " |")
+    divider = "|---:|---|---:|---:|---:|---:|" + "---:|" * len(numbers)
+    rows = [
+        _selection_row(str(rank), f"`{score.candidate.label}`", score.windows)
+        for rank, score in enumerate(result.ranking, start=1)
+    ]
+    rows.append(_selection_row("—", "buy-and-hold (referencia)", result.benchmark))
+    returns_header = "| Combinación | " + " | ".join(f"Retorno V{n}" for n in numbers) + " |"
+    returns_divider = "|---|" + "---:|" * len(numbers)
+    returns_rows = [
+        f"| `{winner.candidate.label}` (elegida) | "
+        + " | ".join(_pct(w.total_return) for w in winner.windows) + " |",
+        "| buy-and-hold | " + " | ".join(_pct(w.total_return) for w in result.benchmark) + " |",
+    ]
+    edge = (
+        f"La combinación elegida es **`{winner.candidate.label}`** "
+        f"(mediana del Sharpe {_num(winner.median_sharpe)})."
+        if result.has_edge else
+        "**Ninguna combinación mostró ventaja en validación** (la mejor mediana "
+        f"del Sharpe es {_num(winner.median_sharpe)} <= 0). Se registra igualmente "
+        f"`{winner.candidate.label}` como la elegida por el criterio."
+    )
+    lines = [
+        "# Selección walk-forward",
+        "",
+        DISCLAIMER,
+        "",
+        "**El holdout final no se ha usado**: sus precios no intervienen en "
+        "ningún resultado de este informe.",
+        "",
+        "## Datos",
+        "",
+        *_data_files(data_paths),
+        f"- Velas: {len(candles)} ({day(0)} a {day(len(candles) - 1)})",
+        "",
+        "## Particiones",
+        "",
+        "| Ventana | Ajuste (historial) | Validación | Velas de validación |",
+        "|---|---|---|---:|",
+        *[
+            f"| V{w.number} | {day(w.train_start)} a {day(w.train_end - 1)} | "
+            f"{day(w.validation_start)} a {day(w.validation_end - 1)} | "
+            f"{w.validation_end - w.validation_start} |"
+            for w in plan.windows
+        ],
+        f"| Holdout final | — | {day(plan.holdout_start)} a {day(plan.holdout_end - 1)} "
+        f"(sin usar) | {plan.holdout_end - plan.holdout_start} |",
+        "",
+        "## Criterio (fijado antes de ejecutar, D021)",
+        "",
+        "- Mayor mediana del Sharpe en las ventanas de validación; desempate por "
+        "menor mediana del drawdown máximo. Sharpe no disponible = 0.",
+        "- Cada ventana hereda la posición de la estrategia (D020); buy-and-hold "
+        "se evalúa con la misma regla.",
+        f"- Combinaciones probadas: **{result.trials}**.",
+        "",
+        "## Resultado",
+        "",
+        edge,
+        "",
+        header,
+        divider,
+        *rows,
+        "",
+        "Retorno neto por ventana de la elegida frente a buy-and-hold:",
+        "",
+        returns_header,
+        returns_divider,
+        *returns_rows,
+        "",
+        "## Advertencias",
+        "",
+        f"- Se eligió la mejor de {result.trials} combinaciones: su resultado en "
+        "validación está sesgado al alza por la propia selección.",
+        "- Las ventanas de validación sirven para elegir; no son una prueba "
+        "independiente. La evaluación independiente es el holdout final (T017).",
+        "- Datos de un solo símbolo existente hoy (sesgo de supervivencia) y de "
+        "un periodo concreto (cambios de régimen).",
+        "- Comisión y slippage son supuestos configurables, no costes reales "
+        "garantizados.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _write_trials(path: Path, result: SelectionResult) -> None:
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["rank", "candidate", "strategy", "params", "window",
+                         "sharpe", "total_return", "max_drawdown", "num_trades",
+                         "volatility"])
+        for rank, score in enumerate(result.ranking, start=1):
+            params = ";".join(f"{k}={v}" for k, v in score.candidate.params)
+            for w in score.windows:
+                writer.writerow(_trial_row(rank, score.candidate.label,
+                                           score.candidate.strategy, params, w))
+        for w in result.benchmark:
+            writer.writerow(_trial_row("", "buy_and_hold", "buy_and_hold", "", w))
+
+
+def _trial_row(rank, label: str, strategy: str, params: str, w: WindowScore) -> list:
+    return [rank, label, strategy, params, w.window,
+            "" if w.sharpe is None else repr(w.sharpe),
+            repr(w.total_return), repr(w.max_drawdown), w.num_trades,
+            "" if w.volatility is None else repr(w.volatility)]
+
+
+def _selection_row(rank: str, label: str, windows: Sequence[WindowScore]) -> str:
+    sharpe = statistics.median(0.0 if w.sharpe is None else w.sharpe for w in windows)
+    volatilities = [w.volatility for w in windows if w.volatility is not None]
+    volatility = statistics.median(volatilities) if volatilities else None
+    return (
+        f"| {rank} | {label} | {_num(sharpe)} | "
+        f"{_pct(statistics.median(w.max_drawdown for w in windows))} | "
+        f"{_pct(statistics.median(w.total_return for w in windows))} | {_pct(volatility)} | "
+        + " | ".join(_num(w.sharpe) for w in windows) + " |"
+    )
 
 
 def _metric_rows(s: Metrics, b: Metrics) -> list[str]:

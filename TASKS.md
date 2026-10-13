@@ -39,7 +39,7 @@ holdout final, que se evalúa una sola vez (T017).
 - [x] T015 — Hasta dos estrategias adicionales.
   Aceptación: misma interfaz de señales; prueba de prefijos (no
   look-ahead) para cada una; costes y ejecución idénticos.
-- [ ] T016 — Selección en walk-forward (sin tocar el holdout).
+- [x] T016 — Selección en walk-forward (sin tocar el holdout).
   Aceptación: rejilla explícita y pequeña para cada estrategia; criterio
   de selección fijado antes de ejecutar; se registran TODAS las
   combinaciones (estrategias × parámetros) con sus métricas por ventana
@@ -313,3 +313,21 @@ donchian_signals), tests/test_strategy.py, DECISIONS.md (D021).
   exit < entry). Añadidas pruebas de herencia de posición para las dos
   estrategias nuevas. D021: regla de "sin ventaja" si la mediana es
   <= 0 y rejillas registradas (22). -> 285 passed.
+
+## Registro T016 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/walkforward.py y tests/test_walkforward.py
+(nuevos); src/bottrading/report.py (write_selection_report),
+DECISIONS.md (D022).
+- run_selection recorta las velas en holdout_start; pruebas: alterar
+  o eliminar el holdout no cambia el resultado; puntuaciones iguales a
+  la evaluación directa; ranking; rejilla = D021 (22); informe y CSV
+  reproducibles; datos insuficientes -> código 2.
+- Ejecutado con datos reales (solo validación). Elegida
+  trend_filter(window=50); ver D022 (gana en Sharpe, pierde en retorno
+  frente a buy-and-hold en las 5 ventanas).
+- `.venv\Scripts\python -m pytest -q` -> 302 passed.
+- Revisión Codex: "listo con cambios menores". Aplicado: volatilidad y
+  retorno por ventana en trials.csv y selection.md (la afirmación de
+  D022 queda respaldada: 35,6 % frente a 48,8 %); protocolo del holdout
+  (escenarios de costes e interpretación) registrado en D023 ANTES de
+  abrirlo. Selección sin cambios. -> 302 passed.

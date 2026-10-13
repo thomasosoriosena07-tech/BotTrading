@@ -288,6 +288,59 @@ Rejillas (registradas antes de ejecutar; 22 combinaciones en total):
 - Donchian: entrada {20, 55, 100} × salida {10, 20, 50} (9).
 Costes por defecto de D014; capital 10 000; posición 100 %.
 
+## D022 — Selección congelada antes de abrir el holdout
+Estado: Registrada (T016, 2026-10-13). NO se modifica tras ver el holdout.
+
+- Ejecución: `python -m bottrading.walkforward --binance data/BTCUSDT-1d
+  --scheme daily` (costes D014, capital 10 000). Solo ventanas de
+  validación 2022-11-26 a 2025-05-25; holdout 2025-05-26 a 2026-09-30
+  sin usar. Informe: reports/seleccion_BTCUSDT-1d/ (SHA-256 selection.md
+  be1dc696..., trials.csv a24b3cdf...; reproducible; incluye volatilidad
+  y retorno por ventana tras la revisión de Codex).
+- Elegida por el criterio de D021: **trend_filter(window=50)**, mediana
+  del Sharpe 2,26 (por ventana 2,34 / 2,44 / 2,26 / 1,23 / 1,22), mediana
+  de drawdown 15,2 %. Buy-and-hold: mediana del Sharpe 1,96, drawdown
+  20,1 %. 22 combinaciones probadas; solo 4 superan la mediana del
+  Sharpe de buy-and-hold.
+- Lectura honesta: la elegida ganó MENOS que buy-and-hold en las 5
+  ventanas (retorno +51,8 / +40,0 / +62,3 / +19,0 / +16,0 % frente a
+  +59,8 / +42,3 / +82,9 / +33,8 / +16,8 %). Su ventaja es de riesgo:
+  mediana de volatilidad anualizada 35,6 % frente a 48,8 % y mediana de
+  drawdown 15,2 % frente a 20,1 %; no de ganancia. Validación en un
+  periodo mayoritariamente alcista de BTC.
+- T017 evaluará en el holdout, UNA sola vez, solo la elegida y
+  buy-and-hold (más su sensibilidad a costes). No se evaluarán las
+  otras 21 combinaciones en el holdout, para no volver a elegir.
+
+## D023 — Protocolo del holdout final (registrado ANTES de abrirlo)
+Estado: Aprobada por el usuario ("abre el holdout"); fijada tras la
+revisión de Codex de T016 y antes de ejecutar nada sobre el holdout.
+
+Qué se evalúa (una sola vez):
+- trend_filter(window=50) (D022) y buy-and-hold, en el holdout
+  2025-05-26 a 2026-09-30, con evaluate_segment (calentamiento con todo
+  el historial previo y herencia de posición, D020). Capital 10 000,
+  posición 100 %, tasa libre de riesgo 0.
+- Ninguna otra combinación se evalúa en el holdout.
+
+Escenarios de costes (iguales para estrategia y buy-and-hold):
+- sin costes: comisión 0, slippage 0 (solo referencia).
+- bajo: comisión 0,075 %, slippage 0,02 %.
+- base: comisión 0,1 %, slippage 0,05 % (D014; resultado principal).
+- alto: comisión 0,2 %, slippage 0,1 %.
+
+Interpretación fijada de antemano (escenario base salvo que se diga):
+- "Gana más que buy-and-hold" si su retorno total neto es mayor.
+- "Mejor ajustada al riesgo" si su Sharpe es mayor.
+- "Menor riesgo" si su drawdown máximo y su volatilidad son menores.
+- "Robusta a costes" si la comparación de retorno con buy-and-hold
+  tiene el mismo signo en los escenarios bajo, base y alto.
+- Sea cual sea el resultado: un holdout de 16 meses de un solo activo
+  no demuestra una ventaja estadística; se publica tal cual. No se
+  cambiará estrategia, parámetros ni criterio a la vista del holdout;
+  una nueva evaluación exigirá datos nuevos (meses posteriores a
+  2026-09) como nuevo holdout.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).
