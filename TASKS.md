@@ -67,7 +67,7 @@ holdout final, que se evalúa una sola vez (T017).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
   y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
   reconciliación reales OK; estado privado movido a
-  %USERPROFILE%\.bottrading\demo (pendiente de Codex). F2b-3 (guarda
+  %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -765,3 +765,5 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   permisos) detiene con StopTheDay, lanzado fuera del except. Pruebas con un
   winreg simulado; el lector real de este equipo devuelve
   C:\Users\thoma\OneDrive y la ubicación real sigue aceptada. 579 passed.
+- Revisión de Codex de ae590b6 (transmitida por el usuario): guarda de
+  ubicación CERRADA para los casos revisados. 579 passed.
