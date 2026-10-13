@@ -1,3 +1,5 @@
 # Los CSV de ejemplo se versionan con LF en todos los sistemas, para que
 # su SHA-256 (citado en los informes) sea el mismo en Windows y Linux.
 *.csv text eol=lf
+# El ancla del diario de paper trading (D028), siempre con LF.
+paper/ledger.state text eol=lf
