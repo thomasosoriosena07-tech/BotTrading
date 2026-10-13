@@ -7,6 +7,7 @@ $ErrorActionPreference = "Continue"  # se comprueba $LASTEXITCODE de cada paso
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 $env:PYTHONIOENCODING = "utf-8"
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }  # acentos en el log
 $python = Join-Path $repo ".venv\Scripts\python.exe"
 $logDir = Join-Path $repo "reports\automation"
 New-Item -ItemType Directory -Force $logDir | Out-Null
