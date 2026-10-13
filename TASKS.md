@@ -444,3 +444,14 @@ tests/test_download.py, readme.md.
   carrera) y la suite (361 passed); no encontró caminos para publicar
   commits no validados ni commits propios fuera de paper/. Pendiente:
   primera ejecución real con commit + push (2026-10-14 08:00).
+
+## Registro D029: panel HTML (Claude Code, 2026-10-13)
+Archivos: src/bottrading/dashboard.py (nuevo), src/bottrading/report.py,
+tests/test_paper.py, readme.md, DECISIONS.md (D029), paper/dashboard.html.
+- Pruebas: autónomo (sin <script> ni URL externas), un gráfico por
+  activo, todas las operaciones listadas, reproducible, escala del
+  gráfico con un solo día o serie plana. 365 passed.
+- Revisión visual: renderizado con Edge sin ventana y captura revisada;
+  corregido el orden de dibujo (la estrategia queda encima de
+  buy-and-hold cuando coinciden).
+- Pendiente: revisión de Codex.

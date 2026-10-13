@@ -9,6 +9,7 @@ import pytest
 
 from bottrading.crossasset import CONFIG as CROSS_CONFIG
 from bottrading.crossasset import FROZEN_CANDIDATE as CROSS_CANDIDATE
+from bottrading.dashboard import render_dashboard, svg_line_chart
 from bottrading.data import Candle, DataValidationError
 from bottrading.paper import (
     CHECKPOINTS,
@@ -279,3 +280,52 @@ def test_cli_is_reproducible(tmp_path):
 def test_cli_reports_missing_data(tmp_path, capsys):
     assert main(["--data", str(tmp_path), "--out", str(tmp_path / "o")]) == 2
     assert "error:" in capsys.readouterr().err
+
+
+# --- panel HTML (D029) -------------------------------------------------------------------
+
+
+
+
+def test_dashboard_is_written_and_self_contained(tmp_path):
+    build_data(tmp_path / "data", 30)
+    out = tmp_path / "paper"
+    assert main(["--data", str(tmp_path / "data"), "--out", str(out)]) == 0
+    page = (out / "dashboard.html").read_text(encoding="utf-8")
+    assert page.startswith("<!doctype html>")
+    assert "Simulación sin dinero" in page
+    for symbol in SYMBOLS:
+        assert f"<h3>{symbol}</h3>" in page
+    assert page.count("<svg") == len(SYMBOLS)  # un gráfico por activo
+    # Autónomo: sin scripts ni recursos externos (no accede a la red).
+    assert "<script" not in page.lower()
+    assert "http://" not in page and "https://" not in page
+    assert "prefers-color-scheme: dark" in page
+
+
+def test_dashboard_is_reproducible(tmp_path):
+    build_data(tmp_path / "data", 30)
+    for name in ("a", "b"):
+        main(["--data", str(tmp_path / "data"), "--out", str(tmp_path / name)])
+    assert (tmp_path / "a" / "dashboard.html").read_bytes() == \
+        (tmp_path / "b" / "dashboard.html").read_bytes()
+
+
+def test_dashboard_lists_every_trade(tmp_path):
+    build_data(tmp_path / "data", 30)
+    state = run_paper(tmp_path / "data")
+
+    page = render_dashboard(state)
+    trades = sum(len(asset.strategy.trades) for asset in state.assets)
+    assert page.count("<td>compra</td>") + page.count("<td>venta</td>") == trades
+
+
+def test_svg_chart_scales_points_inside_the_plot():
+    days = [date(2026, 10, 1) + timedelta(days=i) for i in range(3)]
+    svg = svg_line_chart(days, [("strategy", [100, 110, 90]), ("benchmark", [100, 100, 100])],
+                         "prueba")
+    assert svg.count("<polyline") == 2
+    assert "2026-10-01" in svg and "2026-10-03" in svg
+    # Un solo día o serie plana no rompen la escala.
+    flat = svg_line_chart(days[:1], [("strategy", [100])], "plano")
+    assert "<polyline" in flat

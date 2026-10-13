@@ -94,6 +94,10 @@ volver a simular (el diario `paper/ledger.csv` solo admite añadir filas):
     python -m bottrading.paper
 
 Después, hacer commit de `paper/` para que Git sirva de sello de tiempo.
+La tarea programada de D028 lo hace sola cada día a las 08:00.
+
+Panel visual: abrir `paper/dashboard.html` en el navegador (se regenera
+en cada ejecución; funciona sin internet).
 Puntos de control: 2027-03-31 y 2027-09-30.
 
 ## Arquitectura
@@ -111,6 +115,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `holdout.py` | Evaluación única del holdout final |
 | `crossasset.py` | Estrategia congelada en otros activos |
 | `paper.py` | Paper trading con diario solo de añadir |
+| `dashboard.py` | Panel HTML del paper trading |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |

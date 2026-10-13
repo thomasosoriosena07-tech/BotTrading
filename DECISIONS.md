@@ -503,6 +503,21 @@ hacer commits automáticos.
   externa es el historial de Git en GitHub (un commit por día).
 - Para pararlo: deshabilitar o borrar la tarea programada.
 
+## D029 — Panel HTML del paper trading
+Estado: Aprobada por el usuario ("sí, prepáralo", 2026-10-13).
+
+- src/bottrading/dashboard.py genera paper/dashboard.html en cada
+  ejecución de `python -m bottrading.paper` (y por tanto cada día con la
+  tarea de D028, que lo versiona con el resto de paper/).
+- Página autónoma: CSS y gráficos SVG en línea, sin scripts ni recursos
+  externos (una prueba lo exige); modo claro y oscuro. Sin fecha de
+  generación: reproducible byte a byte.
+- Contenido: fecha de datos, días simulados, próximo punto de control;
+  por activo, posición (dentro/fuera), retorno de estrategia y de
+  buy-and-hold, caídas máximas, operaciones y curva de capital; tabla
+  de operaciones simuladas; puntos de control cuando se alcancen.
+- Actualización diaria (velas cerradas), no en tiempo real.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).

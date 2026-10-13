@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from bottrading.backtest import BacktestResult
 from bottrading.binance import verify_checksum
+from bottrading.dashboard import render_dashboard
 from bottrading.data import Candle
 from bottrading.metrics import Comparison, Metrics, compute_metrics, irregular_gaps
 
@@ -480,11 +481,16 @@ def render_crossasset_markdown(
 
 
 def write_paper_report(out_dir: Path, *, state: PaperState) -> dict[str, Path]:
-    """paper/report.md y paper/equity.csv (D027). El diario lo escribe paper.py."""
+    """paper/report.md, equity.csv y dashboard.html (D027, D029).
+
+    El diario lo escribe paper.py.
+    """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = {"report": out_dir / "report.md", "equity": out_dir / "equity.csv"}
+    paths = {"report": out_dir / "report.md", "equity": out_dir / "equity.csv",
+             "dashboard": out_dir / "dashboard.html"}
     paths["report"].write_text(render_paper_markdown(state), encoding="utf-8", newline="\n")
+    paths["dashboard"].write_text(render_dashboard(state), encoding="utf-8", newline="\n")
     with paths["equity"].open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, lineterminator="\n")
         writer.writerow(["date", "symbol", "strategy_equity", "buy_and_hold_equity"])
