@@ -77,7 +77,7 @@ def render_markdown(
         "",
         "## Datos",
         "",
-        f"- Archivo: `{data_path.as_posix()}`",
+        f"- Archivo: `{data_path.name}` (identificado por su SHA-256)",
         f"- SHA-256: `{file_sha256(data_path)}`",
         f"- Velas: {len(candles)}",
         f"- Desde: {candles[0].timestamp.isoformat()}",

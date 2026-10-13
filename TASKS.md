@@ -10,8 +10,8 @@
 - [x] T007 — Añadir comisiones, slippage y límites de posición.
 - [x] T008 — Calcular métricas y comparación buy-and-hold.
 - [x] T009 — Generar informe reproducible.
-- [ ] T010 — Añadir pruebas de integración y documentación.
-- [ ] T011 — Revisión independiente con Codex.
+- [x] T010 — Añadir pruebas de integración y documentación.
+- [x] T011 — Revisión independiente con Codex.
 - [ ] T012 — Ejecutar el MVP completo con datos de ejemplo.
 
 ## Reglas
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T010.
+- El siguiente paso prioritario es T012.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -149,3 +149,24 @@ Eliminado examples/.gitkeep (la carpeta ya tiene archivos).
 - Revisión Codex: "listo" (reproducibilidad verificada con hashes en
   directorios externos). Aplicada su sugerencia: examples/README.md
   identifica el CSV como sintético.
+
+## Registro T010 (Claude Code, 2026-10-13)
+Archivos: tests/test_integration.py (nuevo), readme.md (Arquitectura,
+Supuestos y limitaciones).
+- 9 pruebas de punta a punta con examples/synthetic_daily.csv: carga,
+  alternancia compra/venta, ejecución en la vela siguiente, sin
+  look-ahead al recortar los datos, contabilidad = suma de PnL, costes
+  reducen el valor final, buy-and-hold sin costes sigue al precio,
+  métricas disponibles con 2 años diarios, CLI completa.
+- `.venv\Scripts\python -m pytest -q` -> 176 passed.
+
+## Registro T011 (revisión de Codex, transmitida por el usuario)
+- Codex: instalación en venv limpio fuera del repositorio con
+  pip install -e ".[dev]" -> 176 passed; CLI reproducible; costes,
+  ejecución en la vela siguiente y ausencia de look-ahead confirmados;
+  sin red, claves ni órdenes reales en src/, tests/, examples/.
+  Veredicto: "listo con cambios menores".
+- Aplicado por Claude Code: el informe cita solo el nombre del CSV
+  (prueba de informe idéntico desde otra carpeta); run_backtest valida
+  volumen y coherencia high/low con validate_candle (4 pruebas).
+- `.venv\Scripts\python -m pytest -q` -> 181 passed.

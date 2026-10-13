@@ -59,6 +59,34 @@ con fechas ISO 8601 con zona horaria o epoch en milisegundos
 (`--epoch-unit s` para segundos). El dataset de ejemplo se regenera con
 `python examples/generate_synthetic.py`.
 
+## Arquitectura
+
+Paquete `src/bottrading/`, un módulo por responsabilidad:
+
+| Módulo | Función |
+|---|---|
+| `config.py` | `BacktestConfig`: capital, comisión, slippage, tamaño de posición |
+| `data.py` | Carga y validación del CSV OHLCV, normalización a UTC |
+| `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
+| `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
+| `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |
+| `report.py` | Informe Markdown y CSV reproducibles |
+| `__main__.py` | Línea de comandos |
+
+Flujo: CSV → velas validadas → señales al cierre de cada vela →
+ejecución simulada en la vela siguiente → métricas → informe.
+
+Las reglas y supuestos están en `DECISIONS.md`; el estado de las
+tareas, en `TASKS.md`.
+
+## Supuestos y limitaciones
+
+- Solo velas cerradas; los huecos entre velas se avisan, no se rellenan.
+- Spot, solo largo, una posición a la vez; sin apalancamiento ni cortos.
+- Fechas sin zona horaria se rechazan.
+- Métricas sin datos suficientes se muestran como `n/d`.
+- Parámetros no optimizados: un backtest no demuestra ventaja.
+
 ## Seguridad
 
 No incluir claves API, contraseñas, archivos .env reales

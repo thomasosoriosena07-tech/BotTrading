@@ -54,6 +54,18 @@ def test_report_is_byte_reproducible(csv_path, tmp_path):
         assert first[key].read_bytes() == second[key].read_bytes()
 
 
+def test_report_does_not_depend_on_csv_location(csv_path, tmp_path):
+    # Mismo contenido en otra carpeta -> informe idéntico byte a byte.
+    other_dir = tmp_path / "otra" / "carpeta"
+    other_dir.mkdir(parents=True)
+    moved = other_dir / csv_path.name
+    moved.write_bytes(csv_path.read_bytes())
+    first, _, _ = build_report(csv_path, tmp_path / "a")
+    second, _, _ = build_report(moved, tmp_path / "b")
+    for key in first:
+        assert first[key].read_bytes() == second[key].read_bytes()
+
+
 def test_report_content(csv_path, tmp_path):
     paths, strategy, _ = build_report(csv_path, tmp_path / "out")
     text = paths["report"].read_text(encoding="utf-8")

@@ -135,7 +135,7 @@ def _parse_row(
         close=_to_float(values["close"], "close"),
         volume=_to_float(values["volume"], "volume"),
     )
-    _check_values(candle)
+    validate_candle(candle)
     return candle
 
 
@@ -173,7 +173,8 @@ def _parse_epoch(text: str, epoch_unit: str) -> datetime:
         raise DataValidationError(f"epoch fuera de rango: {text!r}") from exc
 
 
-def _check_values(candle: Candle) -> None:
+def validate_candle(candle: Candle) -> None:
+    """Coherencia de una vela: precios > 0, volumen >= 0, high/low válidos."""
     prices = (candle.open, candle.high, candle.low, candle.close)
     if min(prices) <= 0:
         raise DataValidationError("los precios deben ser positivos")

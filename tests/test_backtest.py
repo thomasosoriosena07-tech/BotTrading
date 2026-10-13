@@ -235,6 +235,22 @@ def test_invalid_candle_prices_are_rejected(field, price):
         run_backtest(candles, [B, H, H, H, H], NO_COSTS)
 
 
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"volume": -1.0}, "volumen no puede ser negativo"),
+        ({"volume": float("nan")}, "volumen no finito"),
+        ({"high": 10.0}, "high es menor"),  # open 11 > high 10
+        ({"low": 11.2}, "low es mayor"),  # open 11 < low 11.2 <= high 11.5
+    ],
+)
+def test_incoherent_candles_are_rejected(changes, message):
+    candles = make_candles(OPENS, CLOSES)
+    candles[1] = replace(candles[1], **changes)
+    with pytest.raises(ValueError, match=message):
+        run_backtest(candles, [B, H, H, H, H], NO_COSTS)
+
+
 def test_invalid_signal_type_is_rejected():
     with pytest.raises(ValueError, match="tipo inválido"):
         run_backtest(make_candles(OPENS, CLOSES), [H, H, "buy", H, H], NO_COSTS)

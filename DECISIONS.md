@@ -112,6 +112,8 @@ revisar si se opera con activos indivisibles)
 - Por vela: ejecutar la orden pendiente a la apertura, valorar al
   cierre, dejar pendiente la nueva señal.
 - La posición abierta al final no se cierra: se valora al último cierre.
+- run_backtest valida cada vela por sí mismo (precios y volumen finitos,
+  validate_candle de data.py): no depende de que vengan del cargador.
 - T006 invierte todo el efectivo y no aplica costes; comisiones,
   slippage y límite de tamaño de posición llegan en T007.
 
@@ -157,7 +159,8 @@ Estado: Aprobada (propuesta aceptada por defecto por el usuario)
 - `python -m bottrading --csv <archivo>` escribe report.md, trades.csv
   y equity.csv en reports/<csv>_sma<fast>-<slow>/ (ignorado por Git).
 - Reproducible byte a byte: sin fecha de ejecución; el informe cita el
-  SHA-256 del CSV de entrada. .gitattributes fija LF en los CSV para
+  nombre y el SHA-256 del CSV, no su ruta, para que no cambie al mover
+  el proyecto (T011). .gitattributes fija LF en los CSV para
   que el hash coincida entre sistemas.
 - Costes ejecutados y costes estimados de liquidación se muestran por
   separado (recomendación de Codex en T008).

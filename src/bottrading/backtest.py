@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from bottrading.config import BacktestConfig
-from bottrading.data import Candle
+from bottrading.data import Candle, DataValidationError, validate_candle
 from bottrading.strategy import Signal
 
 logger = logging.getLogger(__name__)
@@ -158,12 +158,19 @@ def _validate_inputs(
         raise ValueError(
             f"hay {len(candles)} velas y {len(signals)} señales; deben coincidir"
         )
+    # La API pública no confía en que las velas vengan del cargador.
     for candle in candles:
         prices = (candle.open, candle.high, candle.low, candle.close)
         if not all(math.isfinite(price) and price > 0 for price in prices):
             raise ValueError(
                 f"vela con precios no positivos o no finitos: {candle.timestamp.isoformat()}"
             )
+        if not math.isfinite(candle.volume):
+            raise ValueError(f"vela con volumen no finito: {candle.timestamp.isoformat()}")
+        try:
+            validate_candle(candle)
+        except DataValidationError as exc:
+            raise ValueError(f"vela inválida en {candle.timestamp.isoformat()}: {exc}") from exc
     for previous, current in zip(candles, candles[1:]):
         if current.timestamp <= previous.timestamp:
             raise ValueError(
