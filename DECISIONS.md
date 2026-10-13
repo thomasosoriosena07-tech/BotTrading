@@ -370,6 +370,32 @@ resultado (D023).
   se comen más de la mitad de la ganancia bruta. Un holdout de un solo
   activo no demuestra ventaja estadística.
 
+## D025 — Protocolo de comprobación en otros activos (registrado ANTES)
+Estado: Aprobada por el usuario ("tomo tu recomendación de la 2",
+2026-10-13). Registrada y publicada antes de descargar ETH/SOL y de
+ejecutar nada con ellos.
+
+- Estrategia congelada: trend_filter(window=50) (D022), sin cambios.
+  Referencia: buy-and-hold. Costes base (D014), capital 10 000.
+- Activos: ETHUSDT y SOLUSDT (klines diarios públicos, D019), y
+  BTCUSDT como CONTROL: sus resultados por tramo deben coincidir con
+  D022 (validación) y D024 (holdout); si no, la herramienta está mal y
+  el resto no se interpreta.
+- Tramos: las mismas fechas de BTC (V1-V5 y holdout, D020); cada tramo
+  con calentamiento causal y herencia de posición (D020). Se exigen
+  velas diarias completas en cada tramo y >= 50 velas previas.
+- Reglas por activo (src/bottrading/crossasset.py):
+  - Protección: menor drawdown que buy-and-hold en >= 4 de 6 tramos.
+  - Ventaja bajista: gana a buy-and-hold en TODOS los tramos bajistas
+    (tramo bajista = buy-and-hold pierde en él); n/d si no hay.
+  - Retraso alcista (informativo): tramos alcistas en que gana menos.
+  - "Se repite el patrón de BTC" = protección y no fallar la ventaja
+    bajista.
+- Interpretación fijada: aunque se repita, son activos correlacionados
+  con BTC en los mismos periodos; no es una prueba independiente ni
+  demuestra una ventaja. Si no se repite, se publica igual y NO se
+  ajusta la estrategia para que se repita.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).

@@ -53,7 +53,15 @@ holdout final, que se evalúa una sola vez (T017).
   limitaciones: supervivencia (solo símbolos existentes hoy), cambios
   de régimen. Resultados desfavorables se publican igual.
 - [x] T018 — Revisión independiente de la fase 2 con Codex.
+- [ ] T020 — Estrategia congelada en otros activos (D025).
+  Aceptación: protocolo publicado antes de ejecutar; control BTC igual
+  a D022/D024; ETH y SOL en los mismos tramos; reglas de D025 aplicadas
+  sin cambios; informe reproducible.
 - [ ] T019 — Paper trading con datos públicos en tiempo real.
+  Compromiso del usuario (2026-10-13): hacerla después de T020 "con
+  firmeza". Antes de implementar se fijará por escrito el alcance de red
+  (solo datos públicos de mercado, sin claves ni órdenes) para su
+  aprobación explícita.
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
   órdenes; las pruebas siguen sin red.
 

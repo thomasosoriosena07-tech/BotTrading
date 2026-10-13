@@ -26,7 +26,8 @@ from bottrading.binance import verify_checksum
 from bottrading.data import Candle
 from bottrading.metrics import Comparison, Metrics, compute_metrics, irregular_gaps
 
-if TYPE_CHECKING:  # solo tipos: walkforward y holdout importan este módulo
+if TYPE_CHECKING:  # solo tipos: estos módulos importan report
+    from bottrading.crossasset import AssetResult
     from bottrading.holdout import HoldoutResult
     from bottrading.walkforward import SelectionResult, WindowScore
 
@@ -395,6 +396,98 @@ def render_holdout_markdown(
         "",
     ]
     return "\n".join(lines)
+
+
+def write_crossasset_report(
+    out_dir: Path, *, data_paths: Sequence[Path], assets: Sequence[AssetResult]
+) -> dict[str, Path]:
+    """crossasset.md y segments.csv (protocolo D025)."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {"crossasset": out_dir / "crossasset.md", "segments": out_dir / "segments.csv"}
+    text = render_crossasset_markdown(data_paths=[Path(p) for p in data_paths], assets=assets)
+    paths["crossasset"].write_text(text, encoding="utf-8", newline="\n")
+    with paths["segments"].open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["asset", "segment", "who", "total_return", "sharpe",
+                         "max_drawdown", "volatility", "num_trades"])
+        for asset in assets:
+            for seg in asset.segments:
+                for who, m in (("strategy", seg.strategy), ("buy_and_hold", seg.benchmark)):
+                    writer.writerow([asset.name, seg.name, who, repr(m.total_return),
+                                     "" if m.sharpe is None else repr(m.sharpe),
+                                     repr(m.max_drawdown),
+                                     "" if m.volatility is None else repr(m.volatility),
+                                     m.num_trades])
+    return paths
+
+
+def render_crossasset_markdown(
+    *, data_paths: Sequence[Path], assets: Sequence[AssetResult]
+) -> str:
+    lines = [
+        "# Estrategia congelada en otros activos: `trend_filter(window=50)`",
+        "",
+        DISCLAIMER,
+        "",
+        "Protocolo fijado antes de ejecutar (DECISIONS.md D025): misma "
+        "estrategia, mismos tramos de calendario que en BTC, costes base "
+        "(comisión 0,1 %, slippage 0,05 %), sin ajustes.",
+        "",
+        "## Datos",
+        "",
+        "| Activo | Archivos | Huella SHA-256 (de los SHA-256 de sus archivos) |",
+        "|---|---:|---|",
+        *[f"| {name} | {count} | `{digest}` |"
+          for name, count, digest in _fingerprints(data_paths)],
+        "",
+    ]
+    for asset in assets:
+        lines += [
+            f"## {asset.name}",
+            "",
+            "| Tramo | Retorno estrategia | Retorno buy-and-hold | Drawdown estrategia "
+            "| Drawdown buy-and-hold | Sharpe estrategia | Sharpe buy-and-hold | Tramo |",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
+            *[
+                f"| {seg.name} | {_pct(seg.strategy.total_return)} | "
+                f"{_pct(seg.benchmark.total_return)} | {_pct(seg.strategy.max_drawdown)} | "
+                f"{_pct(seg.benchmark.max_drawdown)} | {_num(seg.strategy.sharpe)} | "
+                f"{_num(seg.benchmark.sharpe)} | {'bajista' if seg.bearish else 'alcista'} |"
+                for seg in asset.segments
+            ],
+            "",
+            f"- Menor drawdown en {asset.protected_segments} de {len(asset.segments)} "
+            f"tramos -> protección: **{_yes_no(asset.protection)}**",
+            f"- Gana a buy-and-hold en todos los tramos bajistas: "
+            f"**{_yes_no_nd(asset.bear_outperformance)}**",
+            f"- Tramos alcistas en los que gana menos que buy-and-hold: {asset.bull_lag}",
+            f"- ¿Se repite el patrón de BTC (D025)? **{_yes_no(asset.pattern_repeats)}**",
+            "",
+        ]
+    lines += [
+        "## Limitaciones",
+        "",
+        "- Los activos están muy correlacionados con BTC y se evalúan en los "
+        "mismos periodos: no son pruebas independientes.",
+        "- Activos que existen hoy (sesgo de supervivencia).",
+        "- Que el patrón se repita no demuestra una ventaja estadística ni "
+        "garantiza resultados futuros.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _fingerprints(paths: Sequence[Path]) -> list[tuple[str, int, str]]:
+    """Por carpeta: número de archivos y SHA-256 de 'nombre  sha256' ordenados."""
+    groups: dict[str, list[Path]] = {}
+    for path in paths:
+        groups.setdefault(path.parent.name, []).append(path)
+    result = []
+    for name, files in groups.items():
+        listing = "".join(f"{p.name}  {file_sha256(p)}\n" for p in sorted(files))
+        result.append((name, len(files), hashlib.sha256(listing.encode()).hexdigest()))
+    return result
 
 
 def _yes_no_nd(value: bool | None) -> str:
