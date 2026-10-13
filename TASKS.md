@@ -7,7 +7,7 @@
 - [x] T004 — Implementar carga y validación de CSV.
 - [x] T005 — Implementar señales de medias móviles.
 - [x] T006 — Implementar motor de backtesting.
-- [ ] T007 — Añadir comisiones, slippage y límites de posición.
+- [x] T007 — Añadir comisiones, slippage y límites de posición.
 - [ ] T008 — Calcular métricas y comparación buy-and-hold.
 - [ ] T009 — Generar informe reproducible.
 - [ ] T010 — Añadir pruebas de integración y documentación.
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T007.
+- El siguiente paso prioritario es T008.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -103,3 +103,17 @@ Archivos: src/bottrading/backtest.py, tests/test_backtest.py, DECISIONS.md (D013
   producía cantidad negativa). Corregido: el motor rechaza velas con
   precios no positivos o no finitos (16 pruebas) -> 97 passed.
 - Sin costes ni límite de posición: pendiente de T007.
+
+## Registro T007 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/config.py (nuevo), src/bottrading/backtest.py,
+tests/test_config.py (nuevo), tests/test_backtest.py, DECISIONS.md (D014).
+- run_backtest(candles, signals, config: BacktestConfig): cambia la
+  firma (antes initial_capital). Pruebas de mecánica usan costes 0.
+- Slippage adverso en compra y venta; comisión sobre el nominal;
+  límite de tamaño de posición; costes registrados por operación.
+- Prueba exacta: con precio constante, capital final = inicial −
+  comisiones − slippage.
+- `.venv\Scripts\python -m pytest -q` -> 122 passed.
+- Revisión Codex: "listo con cambios menores". Añadida prueba combinada
+  de fracción < 1 con costes -> 123 passed. El valor neto de
+  liquidación se hace en T008.

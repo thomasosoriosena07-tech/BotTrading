@@ -115,6 +115,23 @@ revisar si se opera con activos indivisibles)
 - T006 invierte todo el efectivo y no aplica costes; comisiones,
   slippage y límite de tamaño de posición llegan en T007.
 
+## D014 — Costes y tamaño de posición
+Estado: Aprobada (valores por defecto aprobados por el usuario)
+
+Configuración en `BacktestConfig` (src/bottrading/config.py); valores
+inválidos se rechazan al crearla.
+- commission_rate = 0,001 (0,1 %, tarifa base spot de Binance) sobre
+  el nominal de cada compra y venta.
+- slippage_rate = 0,0005 (0,05 %), adverso: compra a apertura × (1 + s),
+  venta a apertura × (1 − s).
+- max_position_fraction = 1,0: fracción del efectivo usada por compra;
+  la comisión está incluida en ella, así que el coste nunca supera el
+  efectivo disponible.
+- Cada Trade registra comisión y coste de slippage; el resultado expone
+  total_fees y total_slippage.
+- La curva de capital valora la posición al cierre sin descontar los
+  costes de una venta futura.
+
 ## Pendientes de decisión
 - ¿Detectar huecos entre velas (intervalo irregular)?
 - Factor de anualización del Sharpe.
