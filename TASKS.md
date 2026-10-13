@@ -376,3 +376,13 @@ D024), readme.md (fase 2).
   en su entorno (no arrancó .venv\Scripts\python.exe); la
   reproducción de los 5 SHA-256 la hizo solo Claude Code.
 - Fase 2 (T013-T018) cerrada. T019 sigue bloqueada (D017).
+
+## Registro T020 (Claude Code, 2026-10-13)
+Orden: protocolo D025 + código probado con datos sintéticos publicados
+(d840d76) -> descarga de ETH y SOL (D019) -> ejecución única -> D026.
+Archivos: src/bottrading/crossasset.py, tests/test_crossasset.py,
+src/bottrading/report.py (write_crossasset_report), DECISIONS.md.
+- Control BTC idéntico a D022/D024. Patrón de D025 repetido en los 3
+  activos; ver D026 (protección sí; ganancia solo en tramos bajistas).
+- `.venv\Scripts\python -m pytest -q` -> 334 passed.
+- Pendiente: revisión de Codex.

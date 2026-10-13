@@ -396,6 +396,33 @@ ejecutar nada con ellos.
   demuestra una ventaja. Si no se repite, se publica igual y NO se
   ajusta la estrategia para que se repita.
 
+## D026 — Resultado de la comprobación en otros activos (T020)
+Estado: Registrado tal cual (protocolo D025, ejecutado una vez con el
+código publicado en d840d76).
+
+- Comando: `python -m bottrading.crossasset --asset data/BTCUSDT-1d
+  --asset data/ETHUSDT-1d --asset data/SOLUSDT-1d`. Salida en
+  reports/crossasset/ (SHA-256 crossasset.md fe3bfb22...,
+  segments.csv 1963eed0...). Datos: ETH 81 meses, SOL 74 (cotiza desde
+  2020-08), todos con checksum verificado.
+- Control BTC: coincide con D022 (retornos y Sharpe por ventana) y con
+  D024 (holdout +4,48 % frente a -23,51 %). La herramienta es fiable.
+- Reglas de D025: el patrón se repite en BTC, ETH y SOL.
+  - BTC: menor drawdown 6/6; gana en el único tramo bajista; se queda
+    atrás en los 5 alcistas.
+  - ETH: menor drawdown 6/6; gana en los 2 bajistas (V4 -0,2 % frente
+    a -9,2 %; V5 +20,2 % frente a -25,5 %) y en el holdout (+94,3 %
+    frente a +5,0 %, con drawdown 29,8 % frente a 67,6 %); atrás en 3.
+  - SOL: menor drawdown solo 4/6 (justo el mínimo); gana en los 2
+    bajistas pero en el holdout PIERDE dinero (-22,2 % frente a -33,0 %,
+    Sharpe peor); en V4 -5,4 % frente a +38,7 %.
+- Lectura honesta: el rasgo que se repite es la PROTECCIÓN (menor
+  drawdown en 16 de 18 tramos) y ganar en tramos bajistas. En retorno
+  supera a buy-and-hold solo en 6 de 18 tramos y queda atrás en 12. No
+  es una prueba independiente (activos correlacionados, mismos
+  periodos) ni demuestra una ventaja. No se ajusta nada a la vista de
+  estos resultados.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).
