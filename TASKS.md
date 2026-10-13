@@ -65,8 +65,8 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 y F2b-2 cerrados. F3 (comandos) hecho, pendiente de
-  Codex y de la primera conexión real con aprobación. F2b-3 (guarda
+  y revisados. F2b-1 y F2b-2 cerrados. F3 (comandos) revisado; falta la
+  primera conexión real (clave del usuario y su visto bueno). F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -709,3 +709,9 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   privados ilegibles) salen como DETENIDO con su tipo, sin traceback;
   (P2) el kill switch STOP detiene init y reconcile antes de tocar el
   exchange, y check lo muestra y termina con DETENIDO.
+- Revisión de Codex de 18b65bf (transmitida por el usuario): check listo
+  para la primera conexión real de solo lectura cuando el usuario tenga la
+  clave demo. Reserva menor sin acción por ahora: ValueError/KeyError se
+  traducen a DETENIDO en main y no en el punto que procesa cada dato; el
+  tipo y el mensaje siguen visibles y TypeError/AssertionError conservan
+  su traceback. 571 passed.
