@@ -454,4 +454,8 @@ tests/test_paper.py, readme.md, DECISIONS.md (D029), paper/dashboard.html.
 - Revisión visual: renderizado con Edge sin ventana y captura revisada;
   corregido el orden de dibujo (la estrategia queda encima de
   buy-and-hold cuando coinciden).
-- Pendiente: revisión de Codex.
+- Revisión Codex (transmitida por el usuario): "listo". Codex verificó
+  escape del contenido, página autónoma, coherencia con report.md,
+  equity.csv y ledger.csv, escala del SVG y guarda de red; 365 passed.
+  Observación sin acción: svg_line_chart presupone series no vacías y
+  clases CSS internas (no hay entrada de usuario que llegue ahí).
