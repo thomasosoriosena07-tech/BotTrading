@@ -74,7 +74,7 @@ def test_check_before_init_reports_without_secrets(tmp_path):
     assert "desfase con el servidor 120 ms" in text
     assert "BTCUSDT: activo base BTC, stepSize 0.00001000" in text
     assert "Kill switch (STOP): inactivo" in text
-    assert "sin inicializar" in text
+    assert "Línea base: sin fijar" in text
     assert set(demo.methods) == {"GET"}
 
 
@@ -82,7 +82,7 @@ def test_missing_credential_stops_clearly(tmp_path):
     def missing():
         raise CredentialError("no se pudo leer la credencial 'BotTrading-Demo'")
     code, text = run(tmp_path, "check", credentials=missing)
-    assert code == 1 and text.startswith("DETENIDO: no se pudo leer la credencial")
+    assert code == 1 and "DETENIDO: no se pudo leer la credencial" in text
 
 
 def test_clock_skew_stops(tmp_path):
@@ -90,16 +90,23 @@ def test_clock_skew_stops(tmp_path):
     assert code == 1 and "reloj desfasado" in text
 
 
-def test_kill_switch_status_is_shown(tmp_path):
+def test_kill_switch_is_shown_by_check_and_blocks_every_command(tmp_path):
+    # Revisión de Codex: el STOP debe detener, no solo informarse.
     (tmp_path / "STOP").write_text("", encoding="utf-8")
     code, text = run(tmp_path, "check")
-    assert code == 0 and "ACTIVO" in text
+    assert code == 1 and "Kill switch (STOP): ACTIVO" in text and "DETENIDO: kill switch" in text
+    for command in ("init", "reconcile"):
+        demo = FakeDemo()
+        code, text = run(tmp_path, command, demo)
+        assert code == 1 and "DETENIDO: kill switch" in text
+        assert demo.methods == []  # ni siquiera consulta el exchange
+    assert not (tmp_path / "baseline.json").exists()
 
 
 def test_init_requires_the_exact_confirmation_word(tmp_path):
     for answer in ("", "inicializar", "si", "INICIALIZAR AHORA"):
         code, text = run(tmp_path, "init", answer=answer)
-        assert code == 1 and "no se ha guardado nada" in text
+        assert code == 1 and "no se ha guardado la línea base" in text
         assert not (tmp_path / "baseline.json").exists() and not (tmp_path / "orders.csv").exists()
 
 
@@ -133,3 +140,62 @@ def test_reconcile_without_init_stops(tmp_path):
 def test_unknown_command_is_a_usage_error(tmp_path):
     with pytest.raises(SystemExit):
         run(tmp_path, "buy")
+
+
+class Recorder(FakeDemo):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.paths = []
+
+    def __call__(self, request, headers):
+        self.paths.append(urllib.parse.urlsplit(request.url).path)
+        return super().__call__(request, headers)
+
+
+@pytest.mark.parametrize("command", ["check", "init", "reconcile"])
+def test_clock_is_checked_first_by_every_command(tmp_path, command):
+    # Revisión de Codex: ninguna petición firmada antes de comprobar el reloj.
+    demo = Recorder(server_ms=int(NOW * 1000) + 1500)
+    code, text = run(tmp_path, command, demo)
+    assert code == 1 and "reloj desfasado" in text
+    assert demo.paths == ["/api/v3/time"]
+
+
+def test_interrupted_init_is_recoverable(tmp_path):
+    # Revisión de Codex: el registro vacío de un init interrumpido se reutiliza.
+    from bottrading.demo_ledger import OrderLedger
+    OrderLedger(tmp_path / "orders.csv", create=True).close()  # init cortado antes de la línea base
+    code, text = run(tmp_path, "reconcile")
+    assert code == 1 and "no hay línea base" in text
+    code, text = run(tmp_path, "init")
+    assert code == 0 and "se reutiliza" in text and "Inicializado" in text
+    code, text = run(tmp_path, "reconcile")
+    assert code == 0 and "Reconciliación: OK" in text
+
+
+def test_init_never_reuses_a_ledger_with_orders(tmp_path):
+    from datetime import datetime, timezone
+    from bottrading.demo_ledger import OrderLedger
+    from bottrading.execution import OrderIntent
+    from bottrading.strategy import Signal
+    with OrderLedger(tmp_path / "orders.csv", create=True) as ledger:
+        ledger.append(OrderIntent("BTCUSDT", Signal.BUY, datetime(2026, 10, 12, tzinfo=timezone.utc),
+                                  quote_amount=10.0), "INTENT")
+    code, text = run(tmp_path, "init")
+    assert code == 1 and "registro con órdenes sin línea base" in text
+    assert not (tmp_path / "baseline.json").exists()
+
+
+def test_io_and_corrupt_file_errors_become_detenido(tmp_path):
+    # Revisión de Codex: errores de E/S sin traceback.
+    run(tmp_path, "init")
+    (tmp_path / "baseline.json").write_text("{no es json", encoding="utf-8")
+    code, text = run(tmp_path, "reconcile")
+    assert code == 1 and text.splitlines()[-1].startswith("DETENIDO: JSONDecodeError")
+    blocker = tmp_path / "bloqueo"
+    blocker.write_text("soy un archivo", encoding="utf-8")
+    lines = []
+    paths = DemoPaths(blocker / "orders.csv", blocker / "baseline.json", blocker / "STOP")
+    code = main(["init"], credentials=fake_credentials, transport=FakeDemo(), clock=lambda: NOW,
+                paths=paths, ask=lambda prompt: CONFIRMATION_WORD, out=lines.append)
+    assert code == 1 and lines[-1].startswith("DETENIDO: ")

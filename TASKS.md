@@ -699,3 +699,13 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   reconcilia; muestra efectivo, cantidad y coste por activo.
 - Salida: 0 si todo está bien, 1 con "DETENIDO: <motivo>"; nunca claves,
   query firmada ni cuerpos. Todas las peticiones son GET. 565 passed.
+- Revisión de Codex de 5eb260f (transmitida por el usuario): no lista aún
+  para init/reconcile reales. Corregido: (P1) el desfase de reloj se
+  comprueba al empezar TODOS los comandos, antes de cualquier petición
+  firmada (prueba: solo se consulta /api/v3/time si el reloj falla);
+  (P2) init recuperable: crea primero el registro vacío y guarda la línea
+  base al final; un init interrumpido reutiliza el registro vacío y nunca
+  uno con eventos; (P2) OSError, ValueError y KeyError (E/S, archivos
+  privados ilegibles) salen como DETENIDO con su tipo, sin traceback;
+  (P2) el kill switch STOP detiene init y reconcile antes de tocar el
+  exchange, y check lo muestra y termina con DETENIDO.

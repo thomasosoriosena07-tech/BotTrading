@@ -479,28 +479,45 @@ def main(argv: Sequence[str] | None = None, *,
          paths: DemoPaths | None = None,
          ask: Callable[[str], str] = input,
          out: Callable[[str], None] = print) -> int:
-    """0 si todo está bien; 1 si hay que detenerse. Nunca muestra claves."""
+    """0 si todo está bien; 1 si hay que detenerse. Nunca muestra claves.
+
+    Todo comando comprueba primero el reloj (antes de cualquier petición
+    firmada) y, salvo el diagnóstico de check, el kill switch.
+    """
     command = build_parser().parse_args(argv).command
     failure = None
     try:
         paths = paths or DemoPaths.default()
         client = DemoClient(credentials, transport, clock)
+        if command != "check":
+            _assert_no_kill_switch(paths)
+        _assert_clock(client, clock, out)
         handler = {"check": _check, "init": _init, "reconcile": _reconcile}[command]
         return handler(client, credentials, clock, paths, ask, out)
     except (DemoClientError, StopTheDay, LedgerIntegrityError) as error:
         failure = str(error)  # mensajes saneados: sin claves, query ni cuerpo
+    except (OSError, ValueError, KeyError) as error:  # E/S o archivos privados ilegibles
+        failure = f"{type(error).__name__}: {error}"
     out(f"DETENIDO: {failure}")
     return 1
+
+
+def _assert_clock(client, clock, out) -> None:
+    server_ms = client.server_time()  # pública, sin firma
+    skew = int(clock() * 1000) - server_ms
+    out(f"Hora: desfase con el servidor {skew} ms")
+    if abs(skew) >= MAX_CLOCK_SKEW_MS:
+        raise StopTheDay(f"reloj desfasado {skew} ms: sincroniza la hora de Windows")
+
+
+def _assert_no_kill_switch(paths: DemoPaths) -> None:
+    if paths.kill_switch.exists():
+        raise StopTheDay(f"kill switch activo ({paths.kill_switch}): bórralo para continuar")
 
 
 def _check(client, credentials, clock, paths, ask, out) -> int:
     credentials()  # solo comprueba que existe y tiene formato; no se muestra
     out("Credencial demo: presente (valor oculto)")
-    server_ms = client.server_time()
-    skew = int(clock() * 1000) - server_ms
-    out(f"Hora: desfase con el servidor {skew} ms")
-    if abs(skew) >= MAX_CLOCK_SKEW_MS:
-        raise StopTheDay(f"reloj desfasado {skew} ms: sincroniza la hora de Windows")
     for symbol in DEMO_SYMBOLS:
         info = symbol_info(client.exchange_info(symbol), symbol)
         out(f"{symbol}: activo base {info.base_asset}, stepSize {info.step_size}")
@@ -509,19 +526,29 @@ def _check(client, credentials, clock, paths, ask, out) -> int:
     out(f"Cuenta: {len(assets)} activos con saldo ({', '.join(assets)}); "
         f"canTrade de la CUENTA = {account.get('canTrade')} "
         "(el permiso de la CLAVE se comprueba en la web: debe ser solo lectura)")
-    out(f"Kill switch ({paths.kill_switch.name}): "
-        f"{'ACTIVO' if paths.kill_switch.exists() else 'inactivo'}")
-    if not paths.ledger.exists() and not paths.baseline.exists():
-        out("Registro y línea base: sin inicializar (siguiente paso: init)")
+    active = paths.kill_switch.exists()
+    out(f"Kill switch ({paths.kill_switch.name}): {'ACTIVO' if active else 'inactivo'}")
+    _assert_no_kill_switch(paths)
+    if not paths.baseline.exists():
+        out("Línea base: sin fijar (siguiente paso: init)")
         return 0
     return _reconcile(client, credentials, clock, paths, ask, out)
 
 
 def _init(client, credentials, clock, paths, ask, out) -> int:
-    """Fija la línea base y crea el registro vacío: solo con confirmación explícita."""
-    if paths.ledger.exists() or paths.ledger.with_name("orders.state").exists() \
-            or paths.baseline.exists():
+    """Fija la línea base y prepara el registro: solo con confirmación explícita.
+
+    Orden recuperable (revisión de Codex): primero el registro VACÍO, al final
+    la línea base. Si falla entre ambos, el siguiente init reutiliza ese
+    registro vacío; un registro con eventos nunca se reutiliza.
+    """
+    if paths.baseline.exists():
         raise StopTheDay("ya inicializado: una nueva línea base requiere --rebaseline aprobado")
+    if paths.ledger.exists() or paths.ledger.with_name("orders.state").exists():
+        with OrderLedger(paths.ledger) as existing:  # verifica ancla e integridad
+            if existing.records():
+                raise StopTheDay("hay un registro con órdenes sin línea base: investigar")
+        out("Registro vacío de un init anterior incompleto: se reutiliza")
     today = datetime.fromtimestamp(clock(), timezone.utc).date()
     baseline = take_baseline(client, today)
     out(f"Línea base propuesta ({today}):")
@@ -531,10 +558,12 @@ def _init(client, credentials, clock, paths, ask, out) -> int:
     out("Esto fija el punto de partida de la cuenta demo DEDICADA (D030). A partir de")
     out("ahora no debe haber operaciones manuales ni otros bots en esa cuenta.")
     if ask(f"Escribe {CONFIRMATION_WORD} para confirmar: ").strip() != CONFIRMATION_WORD:
-        out("Cancelado: no se ha guardado nada.")
+        out("Cancelado: no se ha guardado la línea base.")
         return 1
-    save_baseline(paths.baseline, baseline, credentials().secret)
-    OrderLedger(paths.ledger, create=True).close()
+    secret = credentials().secret
+    if not paths.ledger.exists():
+        OrderLedger(paths.ledger, create=True).close()
+    save_baseline(paths.baseline, baseline, secret)  # último paso: marca init completo
     out(f"Inicializado: línea base y registro en {paths.ledger.parent}")
     return 0
 
