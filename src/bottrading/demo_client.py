@@ -20,6 +20,7 @@ HTTP y código de Binance).
 import ctypes
 import hashlib
 import hmac
+import http.client
 import json
 import logging
 import re
@@ -300,17 +301,28 @@ def urllib_transport(request: PreparedRequest, headers: Mapping[str, str],
     validate_request(request.method, request.url, verify)
     http_request = urllib.request.Request(request.url, method=request.method,
                                           headers={**headers, "User-Agent": "bottrading-educativo"})
-    failed = False
+    # Todo error se lanza FUERA de los except: ni HTTPError (su .url lleva la
+    # query firmada) ni otra excepción queda en __context__ (revisión de Codex).
+    status, retry_after, body = None, None, None
     try:
         with build_opener().open(http_request, timeout=TIMEOUT_SECONDS) as response:
-            return Response(response.status, response.read(), response.geturl())
-    except urllib.error.HTTPError as exc:  # su .url lleva la query firmada: no se encadena
-        return Response(exc.code, exc.read() or b"", request.url, _retry_after(exc.headers))
-    except OSError:  # URLError, timeouts y cortes: sin respuesta
-        failed = True
-    if failed:  # fuera del except: sin __context__ con el URL firmado
-        raise DemoApiError(request.method, request.path, None)
-    raise AssertionError("inalcanzable")
+            status, body, final_url = response.status, response.read(), response.geturl()
+    except urllib.error.HTTPError as exc:
+        status, retry_after, final_url = exc.code, _retry_after(exc.headers), request.url
+        body = _read_quietly(exc)
+    except (OSError, http.client.HTTPException):  # sin respuesta, corte o lectura incompleta
+        status, body = None, None
+    if status is None or body is None:
+        raise DemoApiError(request.method, request.path, status, retry_after=retry_after)
+    return Response(status, body, final_url, retry_after)
+
+
+def _read_quietly(error: urllib.error.HTTPError) -> bytes | None:
+    """Cuerpo de un HTTPError, o None si no se puede leer (sin encadenar nada)."""
+    try:
+        return error.read() or b""
+    except Exception:  # noqa: BLE001 - cualquier fallo se reduce a "sin cuerpo" para no
+        return None    # propagar una excepción que arrastre el HTTPError con la query firmada
 
 
 def _retry_after(headers) -> int | None:

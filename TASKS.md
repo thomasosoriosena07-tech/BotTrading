@@ -569,3 +569,10 @@ prueba llama a Binance; el transporte real no se ha ejecutado.
   ya no se conserva; (P2) la guarda estática detecta from os import
   system/popen/exec/spawn, import os as y os.startfile, recorre src/ de
   forma recursiva y documenta sus límites (búsqueda textual). 482 passed.
+- Revisión de Codex de ba49f2b (transmitida por el usuario): falta sanear
+  el fallo al leer el cuerpo de un HTTPError. Corregido: urllib_transport
+  lanza todos sus errores fuera de los except; el cuerpo del HTTPError se
+  lee con _read_quietly (cualquier fallo -> sin cuerpo); también se sanean
+  las http.client.HTTPException (p. ej. IncompleteRead), que no son OSError.
+  Ningún except de demo_client.py lanza excepciones. Pruebas: cuerpo
+  ilegible en un 503 y lectura incompleta en un 200. 484 passed.

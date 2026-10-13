@@ -1,5 +1,6 @@
 """Cliente demo de solo lectura (D030, F2a): sin red, con transporte falso."""
 
+import http.client
 import logging
 import sys
 import urllib.error
@@ -327,6 +328,59 @@ def test_transport_failure_keeps_no_exception_with_the_signed_url(monkeypatch):
     assert info.value.kind == "transport"
     assert info.value.__cause__ is None and info.value.__context__ is None
     assert not any("signature" in text for text in exception_texts(info.value))
+
+
+class FailingBody:
+    def read(self, *args):
+        raise ConnectionResetError("corte al leer el cuerpo")
+
+    def close(self):
+        pass
+
+
+def test_unreadable_http_error_body_keeps_no_signed_url(monkeypatch):
+    # Revisión de Codex: si exc.read() fallaba, el HTTPError quedaba en __context__.
+    request, headers = prepared_with_headers()
+    error = urllib.error.HTTPError(request.url, 503, "x", {"Retry-After": "3"}, FailingBody())
+    monkeypatch.setattr(demo, "build_opener", lambda: FakeOpener(error))
+    with pytest.raises(DemoApiError) as info:
+        urllib_transport(request, headers, FAKE_STORED)
+    assert (info.value.kind, info.value.status, info.value.retry_after) == ("unknown", 503, 3)
+    assert info.value.__context__ is None and info.value.__cause__ is None
+    assert not any("signature" in text for text in exception_texts(info.value))
+
+
+class IncompleteResponse:
+    status = 200
+
+    def read(self):
+        raise http.client.IncompleteRead(b"parcial", 100)
+
+    def geturl(self):
+        return "irrelevante"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class OpenerReturning:
+    def __init__(self, response):
+        self.response = response
+
+    def open(self, request, timeout):
+        return self.response
+
+
+def test_incomplete_read_is_sanitized(monkeypatch):
+    request, headers = prepared_with_headers()
+    monkeypatch.setattr(demo, "build_opener", lambda: OpenerReturning(IncompleteResponse()))
+    with pytest.raises(DemoApiError) as info:
+        urllib_transport(request, headers, FAKE_STORED)
+    assert info.value.kind == "transport"
+    assert info.value.__context__ is None and "parcial" not in str(info.value)
 
 
 def test_invalid_json_and_bad_query_keep_no_context():
