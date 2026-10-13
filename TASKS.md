@@ -404,3 +404,16 @@ tests/test_download.py, readme.md.
 - `.venv\Scripts\python -m pytest -q` -> 354 passed.
 - Seguimiento: repetir descarga diaria + `python -m bottrading.paper`
   y commit de paper/. Evaluaciones en 2027-03-31 y 2027-09-30 (D027).
+- Revisión Codex (transmitida por el usuario): "listo con cambios
+  menores"; Codex reprodujo paper/ledger.csv (SHA-256 be5e5d85...).
+  Aplicado: ancla paper/ledger.state (último día, filas, SHA-256) que
+  detecta truncamientos, ediciones, borrados, retrocesos y filas nuevas
+  con fecha ya simulada (9 pruebas); --init-anchor ancló el diario real
+  tras reproducirlo exactamente (mismo SHA-256 que obtuvo Codex).
+- Automatización (D028, pedida por el usuario): scripts/paper_daily.ps1
+  y tarea programada de Windows "BotTrading paper trading", diaria a las
+  08:00 (UTC-5). Verificado: ejecución manual del script y ejecución
+  desde el Programador de tareas (resultado 0, "sin cambios"). NO
+  verificado aún: el camino de commit + push automático, que necesita un
+  día nuevo cerrado; primera oportunidad 2026-10-14 08:00.
+- `.venv\Scripts\python -m pytest -q` -> 360 passed.
