@@ -65,8 +65,9 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 y F2b-2 cerrados. F3: primera conexión real (check) OK;
-  falta init (lo ejecuta el usuario). F2b-3 (guarda
+  y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
+  reconciliación reales OK; pendiente decidir la ubicación del estado
+  privado (virtualización de AppData). F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -723,3 +724,16 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   precargado, admitido solo si no cambia, nota de D030); canTrade de la
   CUENTA = True (el permiso de la CLAVE lo confirma el usuario en la web:
   solo lectura); kill switch inactivo; línea base sin fijar. Solo GET.
+- init ejecutado por el usuario (2026-10-13 18:31:49). check posterior:
+  reconciliación OK (cobertura desde 2026-10-13); BTC, ETH y SOL con 1000
+  USDT de presupuesto y sin posición. Desfase de reloj 477 ms.
+- Hallazgo: el Python de Microsoft Store VIRTUALIZA las escrituras en
+  AppData. El estado privado no está en %LOCALAPPDATA%\BotTrading\demo
+  (como dice D030) sino en %LOCALAPPDATA%\Packages\PythonSoftwareFoundation.
+  Python.3.13_qbz5n2kfra8p0\LocalCache\Local\BotTrading\demo. Sigue fuera
+  del repositorio y de OneDrive, y todo proceso con ese Python lo ve igual;
+  pero desinstalar, reiniciar o cambiar de versión de ese Python BORRA la
+  carpeta (pérdida conjunta: el bot se detiene, no actúa). Propuesta
+  pendiente de aprobación: mover el estado a %USERPROFILE%\.bottrading\demo
+  (no virtualizado, no sincronizado), actualizar D030 y copiar los 3
+  archivos tal cual (HMAC y ancla no dependen de la ruta).
