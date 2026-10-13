@@ -439,3 +439,8 @@ tests/test_download.py, readme.md.
   comprobación y el push. Aplicado: SHA fijado y revalidado, push de
   ese SHA exacto. Pruebas de la guarda: 16/16 OK (carrera con commit
   ajeno encima y debajo). Script real: "OK". 361 passed.
+- Tercera confirmación Codex de D028 (transmitida por el usuario):
+  "listo". Codex ejecutó las pruebas de la guarda (16 OK, incluida la
+  carrera) y la suite (361 passed); no encontró caminos para publicar
+  commits no validados ni commits propios fuera de paper/. Pendiente:
+  primera ejecución real con commit + push (2026-10-14 08:00).
