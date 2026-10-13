@@ -102,7 +102,19 @@ Estado: Aprobada
 - Media con math.fsum sobre la ventana: O(n·ventana), suficiente para
   el MVP; optimizar solo si un dataset real lo exige.
 
+## D013 — Motor de backtesting
+Estado: Aprobada (fracciones: recomendación aceptada por defecto;
+revisar si se opera con activos indivisibles)
+
+- Cantidades fraccionarias (float), como en spot de criptomonedas.
+- Spot, solo largo: una posición abierta como máximo; BUY con
+  posición o SELL sin posición se ignoran (log DEBUG).
+- Por vela: ejecutar la orden pendiente a la apertura, valorar al
+  cierre, dejar pendiente la nueva señal.
+- La posición abierta al final no se cierra: se valora al último cierre.
+- T006 invierte todo el efectivo y no aplica costes; comisiones,
+  slippage y límite de tamaño de posición llegan en T007.
+
 ## Pendientes de decisión
 - ¿Detectar huecos entre velas (intervalo irregular)?
 - Factor de anualización del Sharpe.
-- Unidades fraccionarias permitidas o no.

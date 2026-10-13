@@ -6,7 +6,7 @@
 - [x] T003 — Configurar dependencias y entorno de desarrollo.
 - [x] T004 — Implementar carga y validación de CSV.
 - [x] T005 — Implementar señales de medias móviles.
-- [ ] T006 — Implementar motor de backtesting.
+- [x] T006 — Implementar motor de backtesting.
 - [ ] T007 — Añadir comisiones, slippage y límites de posición.
 - [ ] T008 — Calcular métricas y comparación buy-and-hold.
 - [ ] T009 — Generar informe reproducible.
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T006.
+- El siguiente paso prioritario es T007.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -85,4 +85,21 @@ Archivos: src/bottrading/strategy.py, tests/test_strategy.py, DECISIONS.md (D012
 - Corregido durante la tarea: la primera versión daba una señal falsa
   cuando la rápida tocaba la lenta y volvía al mismo lado.
 - `.venv\Scripts\python -m pytest -q` -> 62 passed.
+- Revisión Codex: "listo con cambios menores". Aplicado: prueba de
+  SELL tras empate inicial; D012 precisa slippage adverso -> 63 passed.
 - Ejecución en la vela siguiente: pendiente de T006 (no implementada).
+
+## Registro T006 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/backtest.py, tests/test_backtest.py, DECISIONS.md (D013).
+- API: run_backtest(candles, signals, initial_capital) -> BacktestResult
+  (trades, timestamps, equity, final_cash, final_quantity). Trade
+  registra la vela de la señal y la de ejecución.
+- Pruebas: ejecución a la apertura de i+1 (no al cierre de i), ida y
+  vuelta, señal en la última vela, posición abierta al final, señales
+  redundantes, sin saldo negativo, alterar velas futuras no cambia el
+  capital pasado, validación de entradas.
+- `.venv\Scripts\python -m pytest -q` -> 81 passed.
+- Revisión Codex: "requiere cambios" (una vela con precio negativo
+  producía cantidad negativa). Corregido: el motor rechaza velas con
+  precios no positivos o no finitos (16 pruebas) -> 97 passed.
+- Sin costes ni límite de posición: pendiente de T007.
