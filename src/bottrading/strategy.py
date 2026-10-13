@@ -68,5 +68,16 @@ def crossover_signals(closes: Sequence[float], fast: int, slow: int) -> list[Sig
     return signals
 
 
+def buy_and_hold_signals(length: int) -> list[Signal]:
+    """Referencia: comprar al cierre de la primera vela y no vender.
+
+    Con las reglas del motor, la compra se ejecuta en la apertura de la
+    segunda vela, igual que cualquier otra señal.
+    """
+    if length <= 0:
+        return []
+    return [Signal.BUY] + [Signal.HOLD] * (length - 1)
+
+
 def _sign(value: float) -> int:
     return (value > 0) - (value < 0)

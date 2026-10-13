@@ -181,6 +181,18 @@ def test_position_fraction_limits_buy_and_keeps_rest_in_cash():
     assert result.equity[-1] == pytest.approx(750 + 250 / 11 * 14.5)
 
 
+def test_liquidation_value_discounts_exit_costs_of_open_position():
+    result = run_backtest(make_candles(OPENS, CLOSES), [B, H, H, H, H], COSTS)
+    qty = result.final_quantity
+    assert result.equity[-1] == pytest.approx(qty * 14.5)  # mark-to-market
+    assert result.final_liquidation_value == pytest.approx(qty * 14.5 * 0.98 * 0.99)
+
+
+def test_liquidation_value_equals_cash_when_flat():
+    result = run_backtest(make_candles(OPENS, CLOSES), [B, H, S, H, H], COSTS)
+    assert result.final_liquidation_value == result.final_cash
+
+
 def test_position_fraction_with_costs():
     config = replace(COSTS, max_position_fraction=0.4)
     result = run_backtest(make_candles(OPENS, CLOSES), [B, H, H, H, H], config)

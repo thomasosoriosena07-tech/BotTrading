@@ -40,9 +40,12 @@ class BacktestResult:
     config: BacktestConfig
     trades: list[Trade]
     timestamps: list[datetime]
-    equity: list[float]
+    equity: list[float]  # mark-to-market al cierre, sin costes de salida
     final_cash: float
     final_quantity: float
+    # Efectivo final si la posición abierta se vendiera al último cierre
+    # con slippage y comisión. Igual a final_cash si no hay posición.
+    final_liquidation_value: float
 
     @property
     def total_fees(self) -> float:
@@ -92,7 +95,16 @@ def run_backtest(
         equity=equity,
         final_cash=cash,
         final_quantity=quantity,
+        final_liquidation_value=_liquidation_value(config, cash, quantity, candles),
     )
+
+
+def _liquidation_value(config: BacktestConfig, cash: float, quantity: float,
+                       candles: Sequence[Candle]) -> float:
+    if quantity == 0:
+        return cash
+    price = candles[-1].close * (1 - config.slippage_rate)
+    return cash + quantity * price * (1 - config.commission_rate)
 
 
 def _buy(config: BacktestConfig, cash: float, signal_candle: Candle,

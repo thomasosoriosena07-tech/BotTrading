@@ -8,7 +8,7 @@
 - [x] T005 — Implementar señales de medias móviles.
 - [x] T006 — Implementar motor de backtesting.
 - [x] T007 — Añadir comisiones, slippage y límites de posición.
-- [ ] T008 — Calcular métricas y comparación buy-and-hold.
+- [x] T008 — Calcular métricas y comparación buy-and-hold.
 - [ ] T009 — Generar informe reproducible.
 - [ ] T010 — Añadir pruebas de integración y documentación.
 - [ ] T011 — Revisión independiente con Codex.
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T008.
+- El siguiente paso prioritario es T009.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -117,3 +117,18 @@ tests/test_config.py (nuevo), tests/test_backtest.py, DECISIONS.md (D014).
 - Revisión Codex: "listo con cambios menores". Añadida prueba combinada
   de fracción < 1 con costes -> 123 passed. El valor neto de
   liquidación se hace en T008.
+
+## Registro T008 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/metrics.py y tests/test_metrics.py (nuevos),
+src/bottrading/backtest.py (final_liquidation_value),
+src/bottrading/strategy.py (buy_and_hold_signals),
+tests/test_backtest.py, DECISIONS.md (D015).
+- compute_metrics(result, risk_free_rate=0.0) -> Metrics;
+  compare_with_buy_and_hold(candles, signals, config) -> Comparison.
+- Recomendación de Codex en T007 aplicada: se distingue valoración
+  mark-to-market y valor neto de liquidación.
+- Métricas sin datos suficientes -> None con nota explicativa.
+- `.venv\Scripts\python -m pytest -q` -> 148 passed.
+- Revisión Codex: "listo con cambios menores". Sus dos puntos
+  (separar costes ejecutados de costes estimados de liquidación y
+  mostrar la limitación de intervalos irregulares) se aplican en T009.

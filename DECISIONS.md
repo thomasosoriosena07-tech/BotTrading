@@ -132,6 +132,25 @@ inválidos se rechazan al crearla.
 - La curva de capital valora la posición al cierre sin descontar los
   costes de una venta futura.
 
+## D015 — Métricas
+Estado: Aprobada (propuesta aceptada por defecto por el usuario)
+
+- total_return sobre el valor neto de liquidación (descuenta slippage
+  y comisión de vender una posición abierta al último cierre). La
+  curva de capital sigue siendo mark-to-market (final_equity_mtm).
+- Anualización: año de 365 días (mercado 24/7). Velas por año =
+  365 días / mediana del intervalo entre velas.
+- annualized_return solo si el periodo cubre >= 365 días.
+- volatility y sharpe: rendimientos por vela de la curva de capital,
+  desviación típica muestral, anualizados con sqrt(velas por año);
+  requieren >= 30 rendimientos. Tasa libre de riesgo anual
+  configurable, 0 por defecto. Sin sharpe si la volatilidad es cero.
+- max_drawdown sobre la curva mark-to-market.
+- win_rate solo sobre idas y vueltas cerradas; PnL incluye costes.
+- Referencia buy-and-hold: misma ejecución, costes y límite de
+  posición (compra en la apertura de la segunda vela).
+- Métrica no disponible = None, con la razón en `notes`.
+
 ## Pendientes de decisión
-- ¿Detectar huecos entre velas (intervalo irregular)?
-- Factor de anualización del Sharpe.
+- ¿Detectar huecos entre velas (intervalo irregular)? Afecta a la
+  estimación de velas por año si los huecos son frecuentes.
