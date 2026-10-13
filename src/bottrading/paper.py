@@ -7,7 +7,9 @@ recalcula todo de forma determinista en cada ejecución.
 
 El diario de operaciones (paper/ledger.csv, versionado en Git) solo
 admite añadir filas: si una ejecución no reproduce exactamente las filas
-ya registradas, se detiene con error.
+ya registradas, se detiene con error. Un ancla (paper/ledger.state:
+último día, filas y SHA-256 del diario) detecta además truncamientos,
+ediciones y filas nuevas con fecha ya simulada (revisión de Codex).
 
 Uso:
     python -m bottrading.paper
@@ -15,6 +17,8 @@ Uso:
 
 import argparse
 import csv
+import hashlib
+import io
 import logging
 import sys
 from collections.abc import Sequence
@@ -141,28 +145,100 @@ def ledger_rows(state: PaperState) -> list[list[str]]:
     return sorted(rows, key=lambda row: (row[3], row[0]))
 
 
-def update_ledger(path: Path, rows: list[list[str]]) -> int:
-    """Escribe el diario si conserva las filas previas; devuelve filas nuevas."""
-    existing: list[list[str]] = []
-    if path.exists():
-        with path.open(encoding="utf-8", newline="") as handle:
-            reader = csv.reader(handle)
-            header = next(reader, None)
-            if header != LEDGER_COLUMNS:
-                raise LedgerIntegrityError(f"{path}: cabecera inesperada")
-            existing = list(reader)
+@dataclass(frozen=True)
+class Anchor:
+    last_day: date
+    rows: int
+    sha256: str
+
+
+def anchor_path(ledger: Path) -> Path:
+    return ledger.with_name("ledger.state")
+
+
+def read_anchor(path: Path) -> Anchor:
+    try:
+        fields = dict(line.split("=", 1) for line in
+                      path.read_text(encoding="utf-8").splitlines() if line)
+        return Anchor(date.fromisoformat(fields["last_day"]), int(fields["rows"]),
+                      fields["sha256"])
+    except (KeyError, ValueError) as exc:
+        raise LedgerIntegrityError(f"{path}: ancla con formato inesperado") from exc
+
+
+def update_ledger(path: Path, rows: list[list[str]], last_day: date,
+                  init_anchor: bool = False) -> int:
+    """Escribe el diario y su ancla si la historia se conserva; devuelve filas nuevas.
+
+    Errores (LedgerIntegrityError), sin escribir nada:
+    - el diario no coincide con su ancla (truncado, editado o borrado);
+    - la simulación no reproduce las filas ya registradas;
+    - hay filas nuevas con fecha de ejecución ya simulada (<= último día
+      anclado) o los datos retroceden;
+    - existe diario sin ancla (salvo `init_anchor`, que exige reproducir
+      el diario exactamente y crea el ancla).
+    """
+    anchor_file = anchor_path(path)
+    existing_bytes = path.read_bytes() if path.exists() else None
+    anchor = read_anchor(anchor_file) if anchor_file.exists() else None
+
+    if anchor is None and existing_bytes is not None and not init_anchor:
+        raise LedgerIntegrityError(f"{path}: existe el diario pero falta su ancla "
+                                   f"{anchor_file.name}")
+    if anchor is not None and existing_bytes is None:
+        raise LedgerIntegrityError(f"{path}: falta el diario pero existe su ancla")
+    existing = _parse_ledger(path, existing_bytes) if existing_bytes is not None else []
+    if anchor is not None:
+        digest = hashlib.sha256(existing_bytes).hexdigest()
+        if digest != anchor.sha256 or len(existing) != anchor.rows:
+            raise LedgerIntegrityError(
+                f"{path}: el diario no coincide con su ancla ({len(existing)} filas, "
+                f"ancla {anchor.rows}); ¿truncado o editado? Recupéralo desde Git.")
+        if last_day < anchor.last_day:
+            raise LedgerIntegrityError(f"los datos llegan a {last_day}, antes del último "
+                                       f"día anclado {anchor.last_day}")
     if rows[:len(existing)] != existing:
         raise LedgerIntegrityError(
             f"{path}: la simulación ya no reproduce las {len(existing)} operaciones "
             "registradas (¿cambiaron los datos o el código?). No se sobrescribe.")
+    new_rows = rows[len(existing):]
+    if anchor is not None:
+        stale = [row for row in new_rows
+                 if date.fromisoformat(row[3][:10]) <= anchor.last_day]
+        if stale:
+            raise LedgerIntegrityError(
+                f"{len(stale)} operaciones nuevas con fecha ya simulada "
+                f"(<= {anchor.last_day}): ¿se corrigieron datos históricos?")
+    if init_anchor and anchor is None and new_rows and existing_bytes is not None:
+        raise LedgerIntegrityError("--init-anchor exige reproducir el diario sin filas nuevas")
+
+    content = _render_ledger(rows)
+    _write_atomic(path, content)
+    _write_atomic(anchor_file, (f"last_day={last_day.isoformat()}\nrows={len(rows)}\n"
+                                f"sha256={hashlib.sha256(content).hexdigest()}\n").encode())
+    return len(new_rows)
+
+
+def _parse_ledger(path: Path, content: bytes) -> list[list[str]]:
+    reader = csv.reader(content.decode("utf-8").splitlines())
+    if next(reader, None) != LEDGER_COLUMNS:
+        raise LedgerIntegrityError(f"{path}: cabecera inesperada")
+    return list(reader)
+
+
+def _render_ledger(rows: list[list[str]]) -> bytes:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(LEDGER_COLUMNS)
+    writer.writerows(rows)
+    return buffer.getvalue().encode("utf-8")
+
+
+def _write_atomic(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".part")
-    with temporary.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow(LEDGER_COLUMNS)
-        writer.writerows(rows)
+    temporary.write_bytes(content)
     temporary.replace(path)
-    return len(rows) - len(existing)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -174,6 +250,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="carpeta con <SYM>-1d y <SYM>-1d-daily")
     parser.add_argument("--out", type=Path, default=Path("paper"),
                         help="carpeta del diario y del informe (versionada)")
+    parser.add_argument("--init-anchor", action="store_true",
+                        help="crea el ancla de un diario existente (debe reproducirse)")
     return parser
 
 
@@ -182,14 +260,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     try:
         state = run_paper(args.data)
-        added = update_ledger(args.out / "ledger.csv", ledger_rows(state))
+        added = update_ledger(args.out / "ledger.csv", ledger_rows(state),
+                              state.last_day, init_anchor=args.init_anchor)
         paths = write_paper_report(args.out, state=state)
     except (DataValidationError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     print("Paper trading simulado: sin dinero ni órdenes reales.")
     print(f"Datos hasta {state.last_day}; operaciones nuevas en el diario: {added}")
-    for path in [args.out / "ledger.csv", *paths.values()]:
+    for path in [args.out / "ledger.csv", args.out / "ledger.state", *paths.values()]:
         print(f"escrito {path}")
     return 0
 

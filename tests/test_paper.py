@@ -1,6 +1,6 @@
 """Paper trading con datos sintéticos (sin red ni datos reales)."""
 
-import csv
+import hashlib
 import math
 import zipfile
 from datetime import date, datetime, timedelta, timezone
@@ -15,9 +15,11 @@ from bottrading.paper import (
     FORWARD_START,
     SYMBOLS,
     LedgerIntegrityError,
+    anchor_path,
     ledger_rows,
     load_forward_candles,
     main,
+    read_anchor,
     run_paper,
     simulate,
     update_ledger,
@@ -126,43 +128,108 @@ def test_simulation_matches_direct_evaluation(tmp_path):
 # --- diario solo de añadir -------------------------------------------------------------
 
 
-def test_ledger_grows_by_appending(tmp_path):
+def extend_data(data, until_offset):
+    base = (datetime(2026, 10, 1, tzinfo=timezone.utc) - HISTORY_START).days
+    for k, symbol in enumerate(SYMBOLS):
+        for i in range(base, base + until_offset):
+            c = candle(i, k)
+            path = data / f"{symbol}-1d-daily" / f"{symbol}-1d-{c.timestamp.date()}.zip"
+            if not path.exists():
+                write_zip(path, [c])
+
+
+@pytest.fixture
+def anchored(tmp_path):
+    """Diario con ancla tras 30 días simulados."""
     data, ledger = tmp_path / "data", tmp_path / "paper" / "ledger.csv"
     build_data(data, 30)
-    first_rows = ledger_rows(run_paper(data))
-    assert update_ledger(ledger, first_rows) == len(first_rows)
-    # Más días: las filas previas se mantienen y solo se añaden nuevas.
-    for symbol in SYMBOLS:
-        daily = data / f"{symbol}-1d-daily"
-        k = SYMBOLS.index(symbol)
-        base = (datetime(2026, 10, 1, tzinfo=timezone.utc) - HISTORY_START).days
-        for i in range(base + 30, base + 60):
-            c = candle(i, k)
-            write_zip(daily / f"{symbol}-1d-{c.timestamp.date()}.zip", [c])
-    more_rows = ledger_rows(run_paper(data))
-    assert more_rows[:len(first_rows)] == first_rows
-    assert update_ledger(ledger, more_rows) == len(more_rows) - len(first_rows)
-
-
-def test_ledger_rejects_rewriting_history(tmp_path):
-    data, ledger = tmp_path / "data", tmp_path / "ledger.csv"
-    build_data(data, 30)
-    rows = ledger_rows(run_paper(data))
+    state = run_paper(data)
+    rows = ledger_rows(state)
     assert rows, "la serie sintética debe generar operaciones"
-    update_ledger(ledger, rows)
+    update_ledger(ledger, rows, state.last_day)
+    return data, ledger, state, rows
+
+
+def test_ledger_grows_by_appending(anchored):
+    data, ledger, _, first_rows = anchored
+    extend_data(data, 60)
+    state = run_paper(data)
+    more_rows = ledger_rows(state)
+    assert more_rows[:len(first_rows)] == first_rows
+    assert update_ledger(ledger, more_rows, state.last_day) == len(more_rows) - len(first_rows)
+    anchor = read_anchor(anchor_path(ledger))
+    assert anchor.last_day == state.last_day and anchor.rows == len(more_rows)
+    assert anchor.sha256 == hashlib.sha256(ledger.read_bytes()).hexdigest()
+
+
+def test_ledger_rejects_rewriting_history(anchored):
+    _, ledger, state, rows = anchored
+    before = ledger.read_bytes()
     tampered = [row[:] for row in rows]
     tampered[0][5] = "1.0"  # precio distinto en una operación ya registrada
     with pytest.raises(LedgerIntegrityError, match="no reproduce"):
-        update_ledger(ledger, tampered)
-    with ledger.open(encoding="utf-8") as handle:
-        assert list(csv.reader(handle))[1:] == rows  # el diario no se tocó
+        update_ledger(ledger, tampered, state.last_day)
+    assert ledger.read_bytes() == before  # el diario no se tocó
+
+
+def test_truncated_ledger_is_detected(anchored):
+    # Revisión de Codex de T019: borrar las últimas filas ya no pasa.
+    _, ledger, state, rows = anchored
+    lines = ledger.read_text(encoding="utf-8").splitlines(keepends=True)
+    ledger.write_text("".join(lines[:-1]), encoding="utf-8")
+    with pytest.raises(LedgerIntegrityError, match="no coincide con su ancla"):
+        update_ledger(ledger, rows, state.last_day)
+
+
+def test_edited_ledger_is_detected(anchored):
+    _, ledger, state, rows = anchored
+    ledger.write_text(ledger.read_text(encoding="utf-8").replace("buy", "sell", 1),
+                      encoding="utf-8")
+    with pytest.raises(LedgerIntegrityError, match="no coincide con su ancla"):
+        update_ledger(ledger, rows, state.last_day)
+
+
+def test_new_rows_dated_in_simulated_period_are_rejected(anchored):
+    # Revisión de Codex: una operación "nueva" con fecha ya simulada.
+    _, ledger, state, rows = anchored
+    stale = rows[-1][:]  # copia con la misma fecha de ejecución que la última fila
+    with pytest.raises(LedgerIntegrityError, match="fecha ya simulada"):
+        update_ledger(ledger, rows + [stale], state.last_day + timedelta(days=5))
+
+
+def test_data_going_backwards_is_rejected(anchored):
+    _, ledger, state, rows = anchored
+    with pytest.raises(LedgerIntegrityError, match="antes del último día anclado"):
+        update_ledger(ledger, rows, state.last_day - timedelta(days=1))
+
+
+def test_missing_anchor_or_ledger_is_rejected(anchored):
+    _, ledger, state, rows = anchored
+    anchor_file = anchor_path(ledger)
+    saved = anchor_file.read_bytes()
+    anchor_file.unlink()
+    with pytest.raises(LedgerIntegrityError, match="falta su ancla"):
+        update_ledger(ledger, rows, state.last_day)
+    anchor_file.write_bytes(saved)
+    ledger.unlink()
+    with pytest.raises(LedgerIntegrityError, match="falta el diario"):
+        update_ledger(ledger, rows, state.last_day)
+
+
+def test_init_anchor_requires_exact_reproduction(anchored):
+    _, ledger, state, rows = anchored
+    anchor_path(ledger).unlink()
+    with pytest.raises(LedgerIntegrityError, match="sin filas nuevas"):
+        update_ledger(ledger, rows + [rows[-1]], state.last_day, init_anchor=True)
+    assert update_ledger(ledger, rows, state.last_day, init_anchor=True) == 0
+    assert anchor_path(ledger).exists()
 
 
 def test_ledger_rejects_unexpected_header(tmp_path):
     ledger = tmp_path / "ledger.csv"
     ledger.write_text("otra,cabecera\n", encoding="utf-8")
     with pytest.raises(LedgerIntegrityError, match="cabecera"):
-        update_ledger(ledger, [])
+        update_ledger(ledger, [], date(2026, 10, 1), init_anchor=True)
 
 
 # --- puntos de control e informe ----------------------------------------------------------

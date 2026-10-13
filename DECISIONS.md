@@ -457,6 +457,31 @@ Evaluación fijada de antemano:
   resultado malo se publica igual. Un año de un solo periodo sigue sin
   demostrar una ventaja estadística.
 
+## D028 — Automatización diaria del paper trading
+Estado: Aprobada por el usuario ("quisiera que fuera automático",
+2026-10-13). Excepción explícita y acotada a la regla de AGENTS.md de no
+hacer commits automáticos.
+
+- scripts/paper_daily.ps1, ejecutado por el Programador de tareas de
+  Windows ("BotTrading paper trading") cada día a las 08:00 hora local
+  (UTC-5; el día UTC cierra a las 19:00 locales), o al encender el equipo
+  si estaba apagado.
+- Pasos: descarga de días cerrados (D027) -> `python -m bottrading.paper`
+  -> si paper/ cambió: commit SOLO de paper/ ("paper: datos hasta
+  <día> (automático, D028)") y push normal a origin/main. Nunca --force;
+  nunca otros archivos.
+- Si un paso falla (día aún no publicado, datos con huecos, error de
+  integridad del diario), no hay commit; el error queda en
+  reports/automation/paper_<fecha>.log (ignorado por Git) y se reintenta
+  al día siguiente.
+- Integridad del diario reforzada (revisión de Codex de T019):
+  paper/ledger.state ancla último día, número de filas y SHA-256 del
+  diario. Detecta truncamientos, ediciones, borrado del diario o del
+  ancla, retrocesos de datos y filas nuevas con fecha ya simulada. Un
+  diario existente sin ancla solo se ancla con --init-anchor si se
+  reproduce exactamente.
+- Para pararlo: deshabilitar o borrar la tarea programada.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).
