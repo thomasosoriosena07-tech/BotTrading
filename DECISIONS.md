@@ -46,8 +46,14 @@ Estado: Aprobada
 Los datos de ejemplo versionados irán en examples/.
 data/ y reports/ siguen ignorados por Git (datos locales y salidas).
 
+## D009 — pyproject.toml y estructura src/
+Estado: Aprobada
+
+Paquete en src/bottrading/, configurado con pyproject.toml.
+Motivo: `pip install -e .` hace el paquete importable sin manipular
+rutas y permite verificar la instalación en un entorno limpio.
+
 ## Pendientes de decisión
-- Gestión de dependencias: pyproject.toml (recomendado) o requirements.txt.
 - Precio de ejecución: apertura de la vela siguiente + slippage.
 - Detección de velas incompletas en CSV.
 - Fechas sin zona horaria: rechazar o asumir UTC.
