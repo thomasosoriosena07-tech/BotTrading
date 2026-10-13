@@ -65,7 +65,9 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. Siguiente: F2b (sin red). Lectura de
+  y revisados. F2b-1 hecho; pendiente de revisión de Codex. F2b-3 (guarda
+  de publicación) después de verificar la primera ejecución automática
+  de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
@@ -579,3 +581,26 @@ prueba llama a Binance; el transporte real no se ha ejecutado.
 - Revisión de Codex de 3e4c6c1 (transmitida por el usuario): F2a CERRADO;
   se puede empezar F2b. 484 passed. Salvedad: el except Exception de
   _read_quietly debe seguir limitado a la lectura del cuerpo del HTTPError.
+
+## Registro T021 F2b-1 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/demo_ledger.py (nuevo), tests/test_demo_ledger.py
+(nuevo), readme.md. Sin red y sin código de envío real: el protocolo usa la
+interfaz Gateway (query/submit); solo existe un servidor simulado en pruebas.
+- Registro privado de eventos (INTENT, SENT, ACK, UNKNOWN, FINAL,
+  ADJUDICATED_NOT_SENT) solo de añadir, en %LOCALAPPDATA%/BotTrading/demo,
+  con ancla (filas y SHA-256) y escritura atómica con fsync antes de cada
+  paso de red. Registro o ancla ausente, truncado, editado o reordenado:
+  LedgerIntegrityError.
+- execute_intent: estado final -> 0 envíos; SENT/ACK/UNKNOWN -> solo
+  consultas, nunca reenvío; INTENT sin SENT -> el protocolo continúa;
+  consulta previa obligatoria con 3 respuestas coherentes (máximo 5, pausa
+  de 2 s); timeout/5XX/duplicado -> UNKNOWN y resolución por consulta; si
+  no aparece -> StopTheDay para adjudicación manual; rechazo -> FINAL
+  REJECTED sin reintento; mismo id con contenido distinto -> StopTheDay;
+  una orden no final de un símbolo bloquea nuevas órdenes de ese símbolo.
+- adjudicate_not_sent: exige aprobación explícita, cobertura completa
+  (F2b-2) y 3 consultas coherentes de que la orden no existe; conserva el
+  historial; la señal no se reenvía automáticamente.
+- Pruebas con un servidor simulado que ACEPTA un id repetido si la orden
+  anterior está FILLED: repetir la misma intención (también tras recargar
+  el registro) envía 0. 505 passed.
