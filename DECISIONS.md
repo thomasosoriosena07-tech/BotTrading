@@ -542,7 +542,7 @@ Documentación oficial consultada (2026-10-13, developers.binance.com/docs/
 binance-spot-api-docs: demo-mode/general-info, rest-api/request-security,
 rest-api/trading-endpoints, rest-api/account-endpoints,
 rest-api/general-api-information, errors, filters):
-- Demo Mode disponible desde 2026-01-29. REST: https://demo-api.binance.com/api.
+- REST de Demo Mode: https://demo-api.binance.com/api.
   Mismas funciones, límites de peticiones y filtros que el exchange real;
   saldo reiniciable desde la web; durante el mantenimiento no se pueden
   crear ni cancelar órdenes. Claves en demo.binance.com (API Management).
@@ -554,10 +554,11 @@ rest-api/general-api-information, errors, filters):
   (con el secretKey de ejemplo de la documentación).
 - recvWindow por defecto 5000 ms, máximo 60000; se usará <= 5000.
 - newClientOrderId es "único entre las órdenes ABIERTAS" y un id repetido
-  "solo se acepta cuando la anterior está llena". Consecuencia: en órdenes
-  MARKET (que se llenan al instante) el servidor NO impide un duplicado
-  con el mismo id. La deduplicación depende de la consulta previa y del
-  ledger privado, no del servidor.
+  "solo se acepta cuando la anterior está llena". Consecuencia: si la
+  orden anterior con ese id está en estado FILLED, el servidor acepta un
+  duplicado con el mismo id (revisión de Codex: no se presupone que toda
+  MARKET acabe FILLED; ver lo no documentado más abajo). La deduplicación
+  depende de la consulta previa y del ledger privado, no del servidor.
 - El formato del id solo está documentado para FIX: ^[a-zA-Z0-9-_]{1,36}$.
   Se adopta ese formato, más restrictivo, también para REST.
 - 5XX y -1007: estado de ejecución DESCONOCIDO; se consulta antes de
@@ -608,18 +609,24 @@ rest-api/general-api-information, errors, filters):
 
 2. Límites operativos (fijos; solo se cambian con nueva aprobación)
 - Símbolos: BTCUSDT, ETHUSDT y SOLUSDT. Solo MARKET, solo BUY y SELL.
-- Capital ficticio: 1000 USDT por activo (3000 en total), llevado como
-  efectivo propio de cada activo en el ledger privado, como en paper.
-- BUY: quoteOrderQty = efectivo del activo en el ledger, con un máximo
-  de 1500 USDT por orden. SELL: exactamente la cantidad poseída según el
-  ledger, redondeada hacia abajo a stepSize, y nunca más que el saldo
-  real.
+- Capital: PRESUPUESTO MÁXIMO NO REINVERTIBLE de 1000 USDT por activo
+  (3000 en total), sin aportes externos. Cada activo lleva su efectivo
+  en el ledger privado; las ganancias quedan como efectivo ocioso y no
+  aumentan el tamaño de las compras (revisión de Codex: una sola
+  interpretación). Demo mide la ejecución por operación (slippage y
+  comisión relativos), que no depende del tamaño; por eso la diferencia
+  con el interés compuesto de paper no afecta a lo que se mide.
+- BUY: quoteOrderQty = min(efectivo del activo en el ledger, 1000 USDT).
+  SELL: exactamente la cantidad poseída según el ledger, redondeada hacia
+  abajo a stepSize, y nunca más que el saldo real.
 - Como máximo 1 orden por símbolo y día, y 3 órdenes por día en total.
-  Exposición acumulada (valor de las posiciones a precio de referencia
-  más órdenes en curso) no mayor que 4500 USDT.
+  Exposición a coste (suma del quoteOrderQty de las posiciones abiertas
+  y de las órdenes en curso) no mayor que 3000 USDT.
 - Al alcanzar un límite no se reduce la orden: se registra
   LIMIT_BLOCKED, no se envía nada ese día y se avisa en el log.
-- Pruebas justo por debajo, en el límite y por encima, para cada límite.
+- Pruebas justo por debajo, en el límite y por encima, para cada límite;
+  y tras una ganancia (efectivo 1200: compra 1000) y tras una pérdida
+  (efectivo 800: compra 800).
 
 3. Cuenta y reconciliación
 - Cuenta demo DEDICADA, sin operaciones manuales ni otros bots. Lo
@@ -632,14 +639,26 @@ rest-api/general-api-information, errors, filters):
 - Saldo esperado = línea base + efecto de cada operación propia según
   myTrades (cantidad, precio, commission y commissionAsset, sea cual sea
   el activo de la comisión, incluido BNB).
-- Cobertura demostrable: en cada arranque se paginan allOrders y
-  myTrades desde el último id conocido hasta recibir una página con
-  menos elementos que el límite. Si una página falla, se trunca o hay
-  ids no contiguos con el ledger, la reconciliación es INCOMPLETA: el
-  proceso se detiene sin enviar.
+- Cobertura demostrable (revisión de Codex: sin exigir ids
+  consecutivos; orderId y trade id no forman una secuencia común y una
+  orden puede tener varios fills o ninguno). Cursores inclusivos: allOrders
+  con orderId >= cursor y myTrades con fromId >= cursor; la fila igual al
+  cursor se descarta como ya vista y se pagina hasta recibir una página
+  con menos elementos que el límite. Los registros se comparan por clave:
+  (símbolo, orderId) para órdenes y (símbolo, trade id) para fills.
+- Completo significa: cada orden del ledger aparece en allOrders; la suma
+  de las cantidades de sus fills en myTrades es igual a su executedQty;
+  no hay órdenes ni fills que no estén en el ledger. Si una página falla
+  o no se cumple alguna de estas condiciones, la reconciliación es
+  INCOMPLETA y el proceso se detiene sin enviar. Un hueco numérico entre
+  ids, por sí solo, no se considera falta de datos.
+- Tolerancias de saldo: activo base, 2 x stepSize; USDT, 0,01; BNB (único
+  otro activo de comisión admitido), 0,00000002 (2 unidades de 8
+  decimales, la precisión de los saldos de la cuenta). Cualquier otro
+  activo con saldo o comisión, o una precisión desconocida, detiene el
+  proceso.
 - Toda orden con prefijo bt- que no esté en el ledger, toda orden ajena
-  y toda diferencia de saldo fuera de la tolerancia (2 x stepSize en el
-  activo base y 0,01 USDT) detienen el proceso.
+  y toda diferencia de saldo fuera de tolerancia detienen el proceso.
 - El bot no corrige nada por su cuenta. El usuario investiga, se
   registra el incidente en TASKS.md y una nueva línea base solo se fija
   con --rebaseline, aprobado explícitamente y registrado como evento.
@@ -685,9 +704,17 @@ rest-api/general-api-information, errors, filters):
   un id nuevo con sufijo -R<n>, también con aprobación explícita. Nunca
   se convierte en un reintento automático.
 - "Repetir envía 0" significa repetir la MISMA intención (mismo día y
-  mismo clientOrderId). Una prueba lo verifica.
+  mismo clientOrderId). Una prueba lo verifica con un servidor simulado
+  que SÍ aceptaría el mismo id porque la orden anterior está FILLED: no
+  debe producirse ningún POST.
 
 6. Secretos
+- Permisos: para F3 la clave demo debe ser de SOLO LECTURA (USER_DATA, sin
+  permiso TRADE habilitado en la gestión de claves; revisión de Codex).
+  El usuario lo confirma en la web al crearla. Con la aprobación (b) se
+  crea una clave nueva con TRADE y se revoca la anterior. Prueba: en modo
+  lectura el cliente no puede construir ninguna petición de trading, y un
+  -2015 (permisos) detiene el proceso sin reintentos.
 - Almacenamiento: el Administrador de credenciales de Windows (credencial
   genérica "BotTrading-Demo", protegida por DPAPI con el usuario de
   Windows). La crea el usuario con

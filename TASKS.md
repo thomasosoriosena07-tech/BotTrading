@@ -477,5 +477,14 @@ AGENTS.md y CLAUDE.md (excepción acotada), TASKS.md. Sin código.
 - Documentación oficial consultada (ver D030). Hallazgo relevante: el
   servidor acepta un newClientOrderId repetido si la orden anterior
   está llena, así que la deduplicación no puede depender de él.
-- Aprobación del usuario: (a) lectura demo. Pendiente: revisión de
-  Codex de D030 y aprobación (b) antes de F4.
+- Aprobación del usuario: (a) lectura demo. Pendiente: aprobación (b)
+  antes de F4.
+- Revisión de Codex de D030 (transmitida por el usuario): se puede
+  empezar F1. Corregido en D030: la cobertura se comprueba por claves y
+  cursores inclusivos, no por ids consecutivos; el id repetido se
+  condiciona a la orden anterior FILLED, con prueba de servidor que lo
+  acepta; el capital pasa a presupuesto no reinvertible de 1000 USDT por
+  activo (compra = min(efectivo, 1000), exposición a coste <= 3000);
+  tolerancia de BNB y parada ante otros activos; clave de solo lectura
+  (sin TRADE) para F3; eliminada la fecha de disponibilidad no
+  corroborada.
