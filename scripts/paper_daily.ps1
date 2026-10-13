@@ -7,10 +7,10 @@
 
 $AutomationPrefix = "paper: datos hasta "
 
-function Get-UnpushedForeignCommits {
-    # Commits de origin/main..HEAD que NO son automaticos de paper/.
+function Get-UnpushedForeignCommits([string]$Tip = "HEAD") {
+    # Commits de origin/main..$Tip que NO son automaticos de paper/.
     $foreign = @()
-    $commits = git rev-list "origin/main..HEAD"
+    $commits = git rev-list "origin/main..$Tip"
     if ($LASTEXITCODE -ne 0) { throw "git rev-list termino con codigo $LASTEXITCODE" }
     foreach ($commit in $commits) {
         $subject = git log -1 --format=%s $commit
@@ -26,12 +26,25 @@ function Get-UnpushedForeignCommits {
     return $foreign
 }
 
-function Get-UnpushedNonPaperFiles {
-    # Archivos fuera de paper/ en la diferencia acumulada origin/main..HEAD
+function Get-UnpushedNonPaperFiles([string]$Tip = "HEAD") {
+    # Archivos fuera de paper/ en la diferencia acumulada origin/main..$Tip
     # (cubre cualquier via, incluidos merges).
-    $files = git diff --name-only "origin/main" HEAD
+    $files = git diff --name-only "origin/main" $Tip
     if ($LASTEXITCODE -ne 0) { throw "git diff origin/main termino con codigo $LASTEXITCODE" }
     return @($files | Where-Object { $_ -and -not $_.StartsWith("paper/") })
+}
+
+function Assert-OnlyAutomation([string]$Tip) {
+    $foreign = @(Get-UnpushedForeignCommits $Tip)
+    if ($foreign.Count -gt 0) {
+        throw ("hay $($foreign.Count) commits sin publicar que no son automaticos de paper/ " +
+               "($($foreign -join ', ')); no se publican")
+    }
+    $outside = @(Get-UnpushedNonPaperFiles $Tip)
+    if ($outside.Count -gt 0) {
+        throw ("los cambios sin publicar tocan archivos fuera de paper/ " +
+               "($($outside -join ', ')); no se publican")
+    }
 }
 
 function Assert-SafeToCommit {
@@ -39,16 +52,22 @@ function Assert-SafeToCommit {
     if ($LASTEXITCODE -ne 0 -or $branch -ne "main") {
         throw "la rama actual es '$branch', no main; no se hace commit"
     }
-    $foreign = @(Get-UnpushedForeignCommits)
-    if ($foreign.Count -gt 0) {
-        throw ("hay $($foreign.Count) commits sin publicar que no son automaticos de paper/ " +
-               "($($foreign -join ', ')); no se hace commit para no publicarlos")
-    }
-    $outside = @(Get-UnpushedNonPaperFiles)
-    if ($outside.Count -gt 0) {
-        throw ("los cambios sin publicar tocan archivos fuera de paper/ " +
-               "($($outside -join ', ')); no se hace commit para no publicarlos")
-    }
+    Assert-OnlyAutomation "HEAD"
+}
+
+function Get-ValidatedTip {
+    # Fija el SHA actual y valida origin/main..SHA (revision de Codex: evita
+    # publicar commits que otro proceso anada despues de la comprobacion).
+    $sha = git rev-parse --verify HEAD
+    if ($LASTEXITCODE -ne 0) { throw "git rev-parse termino con codigo $LASTEXITCODE" }
+    Assert-OnlyAutomation $sha
+    return $sha
+}
+
+function Push-Tip([string]$Sha) {
+    # Publica exactamente ese SHA (y sus antecesores ya validados), aunque la
+    # rama local haya avanzado despues. Nunca --force.
+    Invoke-Step "git push" { git push origin "${Sha}:refs/heads/main" }
 }
 
 function Test-PaperStaged {
@@ -90,12 +109,13 @@ function Invoke-Daily {
         } else {
             Write-Log "sin cambios en paper/"
         }
-        # Publica lo pendiente; Assert-SafeToCommit garantizo que solo son commits
-        # automaticos de paper/. Si el push falla, se reintenta al dia siguiente.
-        $pending = @(git rev-list "origin/main..HEAD").Count
+        # Publica lo pendiente hasta un SHA fijado y revalidado. Si el push
+        # falla, el commit automatico queda local y se reintenta al dia siguiente.
+        $sha = Get-ValidatedTip
+        $pending = @(git rev-list "origin/main..$sha").Count
         if ($pending -gt 0) {
-            Invoke-Step "git push" { git push origin main }
-            Write-Log "publicados $pending commits automaticos"
+            Push-Tip $sha
+            Write-Log "publicados $pending commits automaticos hasta $sha"
         }
         Write-Log "OK"
         return 0

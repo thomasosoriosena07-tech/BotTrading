@@ -476,8 +476,14 @@ hacer commits automáticos.
   archivos de paper/, sin merges) y la diferencia acumulada
   origin/main..HEAD solo puede tocar paper/ (cubre merges, revisión de
   Codex). Si no, el script se detiene sin hacer commit, para no publicar
-  trabajo ajeno. Pruebas: scripts/test_paper_daily_guard.ps1 (13 casos
-  en un repositorio temporal). Códigos de
+  trabajo ajeno.
+- Publicación con SHA fijado (revisión de Codex, carrera con otros
+  procesos): tras el commit se fija el SHA, se revalida origin/main..SHA
+  y se publica exactamente ese SHA (`git push origin <SHA>:refs/heads/main`).
+  Un commit que otro proceso añada después no se publica; uno que se
+  cuele por debajo hace fallar la validación.
+- Pruebas: scripts/test_paper_daily_guard.ps1 (16 casos en un
+  repositorio temporal con remoto local, incluidos merge y carrera). Códigos de
   `git diff --cached` distintos de 0 y 1 se tratan como error.
 - Si falla un paso ANTERIOR al commit (día aún no publicado, datos con
   huecos, error de integridad, comprobación de seguridad), no hay

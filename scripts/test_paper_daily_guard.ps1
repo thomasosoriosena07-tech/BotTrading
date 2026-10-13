@@ -58,6 +58,26 @@ git reset -q --hard origin/main
 Check "H solo paper/ -> sin archivos ajenos" (@(Get-UnpushedNonPaperFiles).Count -eq 0)
 git reset -q --hard origin/main
 
+# I (revision de Codex): carrera. Se fija y valida el SHA; otro proceso
+# anade un commit ajeno; solo se publica el SHA fijado.
+$script:log = Join-Path $root "guard.log"
+"g" | Out-File paper/ledger.csv; git add paper; git commit -q -m "paper: datos hasta 2026-10-18 (automatico, D028)"
+$sha = Get-ValidatedTip
+"carrera" | Out-File other.txt; git add other.txt; git commit -q -m "commit ajeno concurrente"
+Push-Tip $sha
+$remote = git ls-remote origin refs/heads/main
+Check "I el remoto queda en el SHA validado" ($remote.StartsWith($sha))
+Check "I el commit ajeno no se publica" (-not ($remote.StartsWith((git rev-parse HEAD))))
+git fetch -q origin
+git reset -q --hard origin/main
+
+# J: commit ajeno DEBAJO del automatico (entre comprobacion y commit) -> no valida.
+"carrera2" | Out-File other.txt; git add other.txt; git commit -q -m "commit ajeno previo"
+"h" | Out-File paper/ledger.csv; git add paper; git commit -q -m "paper: datos hasta 2026-10-19 (automatico, D028)"
+$threw = $false; try { Get-ValidatedTip | Out-Null } catch { $threw = $true }
+Check "J Get-ValidatedTip lanza si hay un ajeno debajo" $threw
+git reset -q --hard origin/main
+
 Check "F nada preparado -> false" (-not (Test-PaperStaged))
 "d" | Out-File paper/ledger.csv; git add paper
 Check "F cambio preparado en paper/ -> true" (Test-PaperStaged)

@@ -434,3 +434,8 @@ tests/test_download.py, readme.md.
   solo paper/. Pruebas de la guarda versionadas en
   scripts/test_paper_daily_guard.ps1: 13/13 OK (incluido el merge).
   Script real: "OK".
+- Segunda confirmación Codex de D028: merge corregido (Codex lo repitió;
+  13 OK); "requiere cambios" por una carrera con otros procesos entre la
+  comprobación y el push. Aplicado: SHA fijado y revalidado, push de
+  ese SHA exacto. Pruebas de la guarda: 16/16 OK (carrera con commit
+  ajeno encima y debajo). Script real: "OK". 361 passed.
