@@ -26,6 +26,7 @@ import csv
 import hashlib
 import io
 import os
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -81,7 +82,13 @@ class GatewayUnknown(Exception):
 
 
 class GatewayRejected(Exception):
-    """Rechazo definitivo antes de ejecutarse (p. ej. filtros, saldo)."""
+    """Rechazo definitivo antes de ejecutarse (p. ej. filtros, saldo).
+
+    Contrato del adaptador (revisión de Codex): solo para respuestas 4XX con
+    un código de rechazo previo al motor (-1013, -2010 salvo duplicado,
+    -1100...). Todo lo ambiguo (5XX, -1007, timeouts, 429/418, cortes) es
+    GatewayUnknown. Aun así, el protocolo consulta tras un rechazo.
+    """
 
     def __init__(self, code: int | None):
         self.code = code
@@ -100,6 +107,59 @@ class Gateway(Protocol):
         """Envía la orden MARKET; puede lanzar GatewayUnknown/Rejected/DuplicateOrder."""
 
 
+# --- instancia única ----------------------------------------------------------------
+
+
+class InstanceLock:
+    """Bloqueo exclusivo NO bloqueante sobre orders.lock (revisión de Codex).
+
+    msvcrt/fcntl: el sistema operativo lo libera si el proceso muere, así que
+    no quedan bloqueos huérfanos. Una segunda instancia se detiene.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._handle = None
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(self.path, "a+b")
+        locked = True
+        try:
+            handle.seek(0)
+            if sys.platform == "win32":
+                import msvcrt
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            locked = False
+        if not locked:
+            handle.close()
+            raise StopTheDay("otra instancia usa el registro de órdenes: detenerse")
+        self._handle = handle
+
+    @property
+    def held(self) -> bool:
+        return self._handle is not None
+
+    def release(self) -> None:
+        if self._handle is None:
+            return
+        try:
+            self._handle.seek(0)
+            if sys.platform == "win32":
+                import msvcrt
+                msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            self._handle.close()
+            self._handle = None
+
+
 # --- registro de eventos con ancla ---------------------------------------------------
 
 
@@ -116,18 +176,47 @@ class OrderRecord:
 
 
 class OrderLedger:
-    """CSV de eventos solo de añadir con ancla `orders.state` (filas y SHA-256)."""
+    """CSV de eventos solo de añadir con ancla `orders.state` (filas y SHA-256).
 
-    def __init__(self, path: Path, clock: Callable[[], datetime] | None = None):
+    Abrirlo toma el bloqueo de instancia única hasta close() (o fin del
+    `with`). Solo se crea con `create=True` (inicialización explícita): si
+    faltan registro y ancla a la vez NO es un inicio limpio, es una pérdida
+    y hay que detenerse (revisión de Codex; la reconciliación de F2b-2
+    detecta además órdenes bt- del exchange que no estén en el registro).
+    """
+
+    def __init__(self, path: Path, clock: Callable[[], datetime] | None = None,
+                 *, create: bool = False):
         self.path = path
         self.anchor = path.with_name("orders.state")
         self._clock = clock or (lambda: datetime.now(timezone.utc))
-        self._rows = self._load()
+        self._lock = InstanceLock(path.with_name("orders.lock"))
+        self._lock.acquire()
+        try:
+            self._rows = self._load(create)
+        except BaseException:
+            self._lock.release()
+            raise
 
-    def _load(self) -> list[list[str]]:
+    def close(self) -> None:
+        self._lock.release()
+
+    def __enter__(self) -> "OrderLedger":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    def _load(self, create: bool) -> list[list[str]]:
         has_ledger, has_anchor = self.path.exists(), self.anchor.exists()
-        if not has_ledger and not has_anchor:
+        if create:
+            if has_ledger or has_anchor:
+                raise LedgerIntegrityError("el registro ya existe: no se reinicializa")
+            self._write([])
             return []
+        if not has_ledger and not has_anchor:
+            raise LedgerIntegrityError("registro de órdenes inexistente: si es el primer uso, "
+                                       "inicialízalo explícitamente; si no, investiga su pérdida")
         if has_ledger != has_anchor:
             raise LedgerIntegrityError("registro o ancla ausente: detenerse (D030)")
         content = self.path.read_bytes()
@@ -150,11 +239,15 @@ class OrderLedger:
         """Añade un evento y reescribe registro y ancla de forma atómica."""
         if event not in EVENTS:
             raise ValueError(f"evento desconocido: {event}")
+        if not self._lock.held:
+            raise StopTheDay("registro cerrado: no se puede escribir sin el bloqueo")
         row = [str(len(self._rows) + 1), self._clock().isoformat(), intent.client_order_id,
                event, intent.symbol, intent.side.value, intent.signal_time.date().isoformat(),
                _number(intent.quote_amount), _number(intent.quantity), status or "",
                _number(executed_qty), detail]
-        rows = [*self._rows, row]
+        self._write([*self._rows, row])
+
+    def _write(self, rows: list[list[str]]) -> None:
         content = _render(rows)
         _write_atomic(self.path, content)
         _write_atomic(self.anchor, f"rows={len(rows)}\nsha256="
@@ -274,13 +367,21 @@ def execute_intent(ledger: OrderLedger, gateway: Gateway, intent: OrderIntent,
         return _store(ledger, intent, existing, "adoptada antes de enviar")
 
     ledger.append(intent, "SENT")  # ANTES del envío
+    rejected, code = False, None
     try:
         status = gateway.submit(intent)
     except GatewayRejected as error:
-        ledger.append(intent, "FINAL", "REJECTED", 0.0, f"código {error.code}")
-        return ledger.record(intent.client_order_id)
+        status, rejected, code = None, True, error.code
     except (GatewayUnknown, DuplicateOrder):
         status = None
+    if rejected:
+        # Se consulta aunque el adaptador diga "rechazo": una orden ejecutada
+        # no debe quedar oculta como REJECTED (revisión de Codex).
+        found = resolve(gateway, intent, sleep)
+        if found is not None:
+            return _store(ledger, intent, found, f"existía pese al rechazo {code}")
+        ledger.append(intent, "FINAL", "REJECTED", 0.0, f"código {code}")
+        return ledger.record(intent.client_order_id)
     if status is None:
         ledger.append(intent, "UNKNOWN")
         return _adopt_or_stop(ledger, gateway, intent, sleep)
@@ -307,22 +408,37 @@ def _store(ledger: OrderLedger, intent: OrderIntent, status: OrderStatus,
     return ledger.record(intent.client_order_id)
 
 
+@dataclass(frozen=True)
+class CoverageProof:
+    """Resultado de la reconciliación (F2b-2): historial de órdenes y fills
+    de `symbols` revisado por completo desde `since`. No es un booleano suelto
+    (revisión de Codex): debe cubrir el símbolo y el día de la orden."""
+
+    symbols: frozenset[str]
+    since: date
+    complete: bool
+
+
 def adjudicate_not_sent(ledger: OrderLedger, gateway: Gateway, client_order_id: str,
-                        approval: str, coverage_complete: bool,
+                        approval: str, coverage: CoverageProof,
                         sleep: Callable[[float], None] = time.sleep) -> OrderRecord:
     """Marca como NO enviada una orden SENT/UNKNOWN que no aparece (D030, punto 5).
 
-    Requiere la aprobación explícita del usuario, cobertura completa de la
-    reconciliación (F2b-2) y 3 consultas coherentes de "no existe". Conserva
-    todo el historial. La señal perdida no se repite automáticamente.
+    Requiere la aprobación explícita del usuario (la recogerá de forma
+    interactiva el comando de F4), una prueba de cobertura completa de la
+    reconciliación que incluya el símbolo y el día, y 3 consultas coherentes
+    de "no existe". Conserva todo el historial. La señal no se repite sola.
     """
     record = ledger.record(client_order_id)
     if record is None or record.final or record.state == "INTENT":
         raise StopTheDay(f"{client_order_id}: no hay nada que adjudicar")
     if not approval.strip():
         raise StopTheDay("la adjudicación requiere la aprobación explícita del usuario")
-    if not coverage_complete:
-        raise StopTheDay("la adjudicación requiere cobertura completa de la reconciliación")
+    if not (isinstance(coverage, CoverageProof) and coverage.complete
+            and record.intent.symbol in coverage.symbols
+            and coverage.since <= record.intent.signal_time.date()):
+        raise StopTheDay("la adjudicación requiere cobertura completa de la reconciliación "
+                         "para ese símbolo y día")
     if resolve(gateway, record.intent, sleep) is not None:
         raise StopTheDay(f"{client_order_id}: la orden existe; se adopta, no se adjudica")
     ledger.append(record.intent, "ADJUDICATED_NOT_SENT", "NOT_SENT", 0.0,

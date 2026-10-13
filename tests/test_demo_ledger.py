@@ -1,10 +1,13 @@
 """Registro privado y protocolo idempotente (D030, F2b-1) con un servidor simulado."""
 
-from datetime import datetime, timedelta, timezone
+import subprocess
+import sys
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 from bottrading.demo_ledger import (
+    CoverageProof,
     DuplicateOrder,
     GatewayRejected,
     GatewayUnknown,
@@ -24,6 +27,8 @@ DAY = datetime(2026, 10, 12, tzinfo=timezone.utc)
 BUY = OrderIntent("BTCUSDT", Signal.BUY, DAY, quote_amount=1000.0)
 SELL = OrderIntent("ETHUSDT", Signal.SELL, DAY, quantity=0.5)
 FILLED = OrderStatus("FILLED", 0.0123)
+CLOCK = lambda: datetime(2026, 10, 13, 0, 5, tzinfo=timezone.utc)  # noqa: E731
+COVERAGE = CoverageProof(frozenset({"BTCUSDT", "ETHUSDT", "SOLUSDT"}), date(2026, 10, 1), True)
 
 
 class FakeExchange:
@@ -56,6 +61,8 @@ class FakeExchange:
             self.orders[intent.client_order_id] = OrderStatus("PARTIALLY_FILLED", 0.005)
             return self.orders[intent.client_order_id]
         self.orders[intent.client_order_id] = FILLED
+        if outcome == "reject_but_filled":
+            raise GatewayRejected(-2010)  # adaptador que clasifica mal una respuesta
         if outcome == "timeout_after_fill":
             raise GatewayUnknown()  # se ejecutó, pero la respuesta no llegó
         if outcome == "timeout_lost":
@@ -68,20 +75,27 @@ def no_sleep(seconds):
     pass
 
 
-def ledger(tmp_path, clock=None):
-    return OrderLedger(tmp_path / "orders.csv",
-                       clock or (lambda: datetime(2026, 10, 13, 0, 5, tzinfo=timezone.utc)))
+@pytest.fixture
+def book(tmp_path):
+    ledger = OrderLedger(tmp_path / "orders.csv", CLOCK, create=True)
+    yield ledger
+    ledger.close()
 
 
-def events(book, client_order_id):
-    return [row[3] for row in book._rows if row[2] == client_order_id]
+def reopen(ledger):
+    ledger.close()
+    return OrderLedger(ledger.path, CLOCK)
+
+
+def events(ledger, client_order_id):
+    return [row[3] for row in ledger._rows if row[2] == client_order_id]
 
 
 # --- envío normal e idempotencia -----------------------------------------------------
 
 
-def test_normal_flow_writes_intent_and_sent_before_the_post(tmp_path):
-    book, exchange = ledger(tmp_path), FakeExchange()
+def test_normal_flow_writes_intent_and_sent_before_the_post(book):
+    exchange = FakeExchange()
     record = execute_intent(book, exchange, BUY, no_sleep)
     assert (record.state, record.status, record.executed_qty) == ("FINAL", "FILLED", 0.0123)
     assert events(book, BUY.client_order_id) == ["INTENT", "SENT", "FINAL"]
@@ -89,34 +103,44 @@ def test_normal_flow_writes_intent_and_sent_before_the_post(tmp_path):
     assert exchange.queries == 3  # 3 "no existe" coherentes antes de enviar
 
 
-def test_repeating_the_same_intent_sends_zero_even_if_server_would_accept(tmp_path):
+def test_repeating_the_same_intent_sends_zero_even_if_server_would_accept(book):
     # D030 / revisión de Codex: el servidor ACEPTARÍA el mismo id (anterior FILLED).
-    book, exchange = ledger(tmp_path), FakeExchange()
+    exchange = FakeExchange()
     execute_intent(book, exchange, BUY, no_sleep)
+    ledger = book
     for _ in range(3):
-        execute_intent(book, exchange, BUY, no_sleep)
-        execute_intent(OrderLedger(book.path), exchange, BUY, no_sleep)  # nueva ejecución
+        execute_intent(ledger, exchange, BUY, no_sleep)
+        ledger = reopen(ledger)  # nueva ejecución
+        execute_intent(ledger, exchange, BUY, no_sleep)
+    ledger.close()
     assert exchange.posts == [BUY.client_order_id]
 
 
-def test_existing_order_is_adopted_without_posting(tmp_path):
-    # El registro se perdió con la orden ya enviada: la consulta previa la encuentra.
+def test_existing_order_is_adopted_without_posting(book):
     exchange = FakeExchange()
     exchange.orders[BUY.client_order_id] = FILLED
-    record = execute_intent(ledger(tmp_path), exchange, BUY, no_sleep)
+    record = execute_intent(book, exchange, BUY, no_sleep)
     assert record.status == "FILLED" and exchange.posts == []
 
 
-def test_rejection_is_final_and_not_retried(tmp_path):
-    book, exchange = ledger(tmp_path), FakeExchange("reject")
+def test_rejection_is_confirmed_by_query_final_and_not_retried(book):
+    exchange = FakeExchange("reject")
     record = execute_intent(book, exchange, SELL, no_sleep)
     assert (record.state, record.status) == ("FINAL", "REJECTED")
+    assert exchange.queries == 6  # 3 antes de enviar y 3 tras el rechazo
     execute_intent(book, exchange, SELL, no_sleep)
     assert exchange.posts == [SELL.client_order_id]
 
 
-def test_same_id_with_different_content_is_refused(tmp_path):
-    book = ledger(tmp_path)
+def test_misclassified_rejection_does_not_hide_an_executed_order(book):
+    # Revisión de Codex: un GatewayRejected erróneo no debe ocultar un FILLED.
+    exchange = FakeExchange("reject_but_filled")
+    record = execute_intent(book, exchange, BUY, no_sleep)
+    assert (record.state, record.status) == ("FINAL", "FILLED")
+    assert exchange.posts == [BUY.client_order_id]
+
+
+def test_same_id_with_different_content_is_refused(book):
     execute_intent(book, FakeExchange(), BUY, no_sleep)
     changed = OrderIntent("BTCUSDT", Signal.BUY, DAY, quote_amount=999.0)
     with pytest.raises(StopTheDay, match="distinta"):
@@ -126,27 +150,30 @@ def test_same_id_with_different_content_is_refused(tmp_path):
 # --- estados ambiguos ----------------------------------------------------------------
 
 
-def test_timeout_after_execution_is_resolved_by_query_not_resent(tmp_path):
-    book, exchange = ledger(tmp_path), FakeExchange("timeout_after_fill")
+def test_timeout_after_execution_is_resolved_by_query_not_resent(book):
+    exchange = FakeExchange("timeout_after_fill")
     record = execute_intent(book, exchange, BUY, no_sleep)
     assert record.status == "FILLED"
     assert events(book, BUY.client_order_id) == ["INTENT", "SENT", "UNKNOWN", "FINAL"]
     assert exchange.posts == [BUY.client_order_id]
 
 
-def test_timeout_without_execution_stops_the_day_and_never_resends(tmp_path):
-    book, exchange = ledger(tmp_path), FakeExchange("timeout_lost")
+def test_timeout_without_execution_stops_the_day_and_never_resends(book):
+    exchange = FakeExchange("timeout_lost")
     with pytest.raises(StopTheDay, match="adjudicación"):
         execute_intent(book, exchange, BUY, no_sleep)
+    ledger = book
     for _ in range(2):  # reinicios: siguen sin reenviar
+        ledger = reopen(ledger)
         with pytest.raises(StopTheDay):
-            execute_intent(OrderLedger(book.path), exchange, BUY, no_sleep)
+            execute_intent(ledger, exchange, BUY, no_sleep)
     assert exchange.posts == [BUY.client_order_id]
-    assert book.record(BUY.client_order_id).state == "UNKNOWN"
+    assert ledger.record(BUY.client_order_id).state == "UNKNOWN"
+    ledger.close()
 
 
-def test_duplicate_answer_is_treated_as_existing_order(tmp_path):
-    book, exchange = ledger(tmp_path), FakeExchange()
+def test_duplicate_answer_is_treated_as_existing_order(book):
+    exchange = FakeExchange()
     exchange.orders[BUY.client_order_id] = OrderStatus("NEW", 0.0)
     exchange.answers = [None, None, None]  # consultas previas no la ven (inconsistencia)
     record = execute_intent(book, exchange, BUY, no_sleep)
@@ -154,34 +181,36 @@ def test_duplicate_answer_is_treated_as_existing_order(tmp_path):
     assert exchange.posts == [BUY.client_order_id]  # un solo intento, rechazado por duplicado
 
 
-def test_crash_after_sent_never_resends(tmp_path):
-    book = ledger(tmp_path)
+def test_crash_after_sent_never_resends(book):
     book.append(BUY, "INTENT")
     book.append(BUY, "SENT")  # el proceso murió durante el POST
     exchange = FakeExchange()
+    ledger = reopen(book)
     with pytest.raises(StopTheDay):
-        execute_intent(OrderLedger(book.path), exchange, BUY, no_sleep)
+        execute_intent(ledger, exchange, BUY, no_sleep)
     assert exchange.posts == []
     exchange.orders[BUY.client_order_id] = FILLED  # sí llegó: se adopta
-    assert execute_intent(OrderLedger(book.path), exchange, BUY, no_sleep).status == "FILLED"
+    ledger = reopen(ledger)
+    assert execute_intent(ledger, exchange, BUY, no_sleep).status == "FILLED"
     assert exchange.posts == []
+    ledger.close()
 
 
-def test_crash_after_intent_only_continues_the_protocol(tmp_path):
-    book = ledger(tmp_path)
+def test_crash_after_intent_only_continues_the_protocol(book):
     book.append(BUY, "INTENT")  # murió antes de escribir SENT: el POST no empezó
     exchange = FakeExchange()
-    assert execute_intent(OrderLedger(book.path), exchange, BUY, no_sleep).status == "FILLED"
+    ledger = reopen(book)
+    assert execute_intent(ledger, exchange, BUY, no_sleep).status == "FILLED"
     assert exchange.posts == [BUY.client_order_id]
+    ledger.close()
 
 
-def test_partial_fill_blocks_new_orders_for_that_symbol(tmp_path):
-    book, exchange = ledger(tmp_path), FakeExchange("partial")
-    record = execute_intent(book, exchange, BUY, no_sleep)
+def test_partial_fill_blocks_new_orders_for_that_symbol(book):
+    record = execute_intent(book, FakeExchange("partial"), BUY, no_sleep)
     assert (record.state, record.status) == ("ACK", "PARTIALLY_FILLED")
     later = OrderIntent("BTCUSDT", Signal.SELL, DAY + timedelta(days=1), quantity=0.005)
     with pytest.raises(StopTheDay, match="sin resolver"):
-        execute_intent(book, exchange, later, no_sleep)
+        execute_intent(book, FakeExchange(), later, no_sleep)
     execute_intent(book, FakeExchange(), SELL, no_sleep)  # otro símbolo no se bloquea
     assert [r.intent.symbol for r in book.unresolved()] == ["BTCUSDT"]
 
@@ -201,27 +230,100 @@ def test_resolve_requires_consistent_answers():
     assert pauses == [2.0, 2.0]
 
 
+# --- instancia única e inicialización explícita (revisión de Codex) -----------------
+
+
+def test_second_instance_is_refused_while_the_first_is_open(book):
+    with pytest.raises(StopTheDay, match="otra instancia"):
+        OrderLedger(book.path, CLOCK)
+    book.close()
+    with OrderLedger(book.path, CLOCK) as again:  # liberado: se puede abrir
+        with pytest.raises(StopTheDay, match="otra instancia"):
+            OrderLedger(book.path, CLOCK)
+        assert again.records() == {}
+
+
+def test_lock_works_across_real_processes(book):
+    # Otro proceso de Python (sin red) intenta abrir el registro mientras está abierto.
+    code = ("import sys; from pathlib import Path; "
+            "from bottrading.demo_ledger import OrderLedger, StopTheDay\n"
+            "try:\n    OrderLedger(Path(sys.argv[1]))\n"
+            "except StopTheDay:\n    sys.exit(3)\nsys.exit(0)")
+    run = lambda: subprocess.run([sys.executable, "-c", code, str(book.path)],  # noqa: E731
+                                 capture_output=True, timeout=60).returncode
+    assert run() == 3
+    book.close()
+    assert run() == 0
+
+
+def test_concurrent_runs_cannot_both_post(book):
+    # Dos ejecuciones: la segunda no puede ni abrir el registro mientras la primera trabaja.
+    exchange = FakeExchange()
+    execute_intent(book, exchange, BUY, no_sleep)
+    with pytest.raises(StopTheDay):
+        execute_intent(OrderLedger(book.path, CLOCK), exchange, BUY, no_sleep)
+    assert exchange.posts == [BUY.client_order_id]
+
+
+def test_closed_ledger_cannot_write(book):
+    book.close()
+    with pytest.raises(StopTheDay, match="cerrado"):
+        book.append(BUY, "INTENT")
+
+
+def test_missing_ledger_is_not_a_clean_start(tmp_path):
+    with pytest.raises(LedgerIntegrityError, match="inexistente"):
+        OrderLedger(tmp_path / "orders.csv", CLOCK)
+    with OrderLedger(tmp_path / "orders.csv", CLOCK, create=True) as ledger:
+        execute_intent(ledger, FakeExchange(), BUY, no_sleep)
+    (tmp_path / "orders.csv").unlink()
+    (tmp_path / "orders.state").unlink()  # pérdida conjunta tras haberse usado
+    with pytest.raises(LedgerIntegrityError, match="inexistente"):
+        OrderLedger(tmp_path / "orders.csv", CLOCK)
+    # el bloqueo se liberó tras el error: falla por integridad, no por "otra instancia"
+    with pytest.raises(LedgerIntegrityError, match="inexistente"):
+        OrderLedger(tmp_path / "orders.csv", CLOCK)
+
+
+def test_existing_ledger_is_never_reinitialized(book):
+    execute_intent(book, FakeExchange(), BUY, no_sleep)
+    book.close()
+    with pytest.raises(LedgerIntegrityError, match="ya existe"):
+        OrderLedger(book.path, CLOCK, create=True)
+    with OrderLedger(book.path, CLOCK) as again:
+        assert again.record(BUY.client_order_id).status == "FILLED"
+
+
 # --- adjudicación manual -------------------------------------------------------------
 
 
-def lost_order(tmp_path):
-    book, exchange = ledger(tmp_path), FakeExchange("timeout_lost")
+def lost_order(book):
+    exchange = FakeExchange("timeout_lost")
     with pytest.raises(StopTheDay):
         execute_intent(book, exchange, BUY, no_sleep)
-    return book, exchange
+    return exchange
 
 
-def test_adjudication_requires_approval_coverage_and_absence(tmp_path):
-    book, exchange = lost_order(tmp_path)
+def test_adjudication_requires_approval_coverage_and_absence(book):
+    exchange = lost_order(book)
     with pytest.raises(StopTheDay, match="aprobación"):
-        adjudicate_not_sent(book, exchange, BUY.client_order_id, " ", True, no_sleep)
-    with pytest.raises(StopTheDay, match="cobertura"):
-        adjudicate_not_sent(book, exchange, BUY.client_order_id, "ok usuario", False, no_sleep)
+        adjudicate_not_sent(book, exchange, BUY.client_order_id, " ", COVERAGE, no_sleep)
+    bad_coverage = [
+        True,  # un booleano suelto no es una prueba
+        CoverageProof(COVERAGE.symbols, COVERAGE.since, False),
+        CoverageProof(frozenset({"ETHUSDT"}), COVERAGE.since, True),
+        CoverageProof(COVERAGE.symbols, date(2026, 10, 13), True),  # empieza después
+    ]
+    for coverage in bad_coverage:
+        with pytest.raises(StopTheDay, match="cobertura"):
+            adjudicate_not_sent(book, exchange, BUY.client_order_id, "ok usuario", coverage,
+                                no_sleep)
     exchange.orders[BUY.client_order_id] = FILLED
     with pytest.raises(StopTheDay, match="existe"):
-        adjudicate_not_sent(book, exchange, BUY.client_order_id, "ok usuario", True, no_sleep)
+        adjudicate_not_sent(book, exchange, BUY.client_order_id, "ok usuario", COVERAGE, no_sleep)
     del exchange.orders[BUY.client_order_id]
-    record = adjudicate_not_sent(book, exchange, BUY.client_order_id, "ok usuario", True, no_sleep)
+    record = adjudicate_not_sent(book, exchange, BUY.client_order_id, "ok usuario", COVERAGE,
+                                 no_sleep)
     assert (record.state, record.status) == ("ADJUDICATED_NOT_SENT", "NOT_SENT")
     assert events(book, BUY.client_order_id) == ["INTENT", "SENT", "UNKNOWN",
                                                  "ADJUDICATED_NOT_SENT"]
@@ -231,31 +333,30 @@ def test_adjudication_requires_approval_coverage_and_absence(tmp_path):
     assert book._rows[-1][11] == "aprobación: ok usuario"
 
 
-def test_nothing_to_adjudicate_for_final_or_unknown_ids(tmp_path):
-    book = ledger(tmp_path)
+def test_nothing_to_adjudicate_for_final_or_unknown_ids(book):
     execute_intent(book, FakeExchange(), BUY, no_sleep)
     for client_order_id in (BUY.client_order_id, "bt-SOLUSDT-20261012-B"):
         with pytest.raises(StopTheDay, match="nada que adjudicar"):
-            adjudicate_not_sent(book, FakeExchange(), client_order_id, "ok", True, no_sleep)
+            adjudicate_not_sent(book, FakeExchange(), client_order_id, "ok", COVERAGE, no_sleep)
 
 
 # --- integridad del registro ---------------------------------------------------------
 
 
-def test_ledger_survives_reload_and_feeds_check_limits(tmp_path):
-    book = ledger(tmp_path)
+def test_ledger_survives_reload_and_feeds_check_limits(book):
     execute_intent(book, FakeExchange(), BUY, no_sleep)
     execute_intent(book, FakeExchange(), SELL, no_sleep)
-    again = OrderLedger(book.path)
-    assert again.orders_on(DAY.date()) == [BUY, SELL]
-    assert again.orders_on(DAY.date() + timedelta(days=1)) == []
-    assert again.records() == book.records()
+    before = book.records()
+    with reopen(book) as again:
+        assert again.orders_on(DAY.date()) == [BUY, SELL]
+        assert again.orders_on(DAY.date() + timedelta(days=1)) == []
+        assert again.records() == before
 
 
 @pytest.mark.parametrize("damage", ["truncate", "edit", "drop_anchor", "drop_ledger", "reorder"])
-def test_damaged_ledger_stops(tmp_path, damage):
-    book = ledger(tmp_path)
+def test_damaged_ledger_stops(book, damage):
     execute_intent(book, FakeExchange(), BUY, no_sleep)
+    book.close()
     content = book.path.read_bytes()
     if damage == "truncate":
         book.path.write_bytes(content[: content.rindex(b"\n", 0, len(content) - 1) + 1])
@@ -270,7 +371,18 @@ def test_damaged_ledger_stops(tmp_path, damage):
         lines[1], lines[2] = lines[2], lines[1]
         book.path.write_bytes(b"\n".join(lines))
     with pytest.raises(LedgerIntegrityError):
-        OrderLedger(book.path)
+        OrderLedger(book.path, CLOCK)
+
+
+def test_crash_between_ledger_and_anchor_writes_fails_closed(book):
+    execute_intent(book, FakeExchange(), BUY, no_sleep)
+    book.close()
+    anchor = book.anchor.read_bytes()
+    with OrderLedger(book.path, CLOCK) as ledger:
+        ledger.append(SELL, "INTENT")
+    book.anchor.write_bytes(anchor)  # el ancla quedó en la versión anterior
+    with pytest.raises(LedgerIntegrityError, match="ancla"):
+        OrderLedger(book.path, CLOCK)
 
 
 def test_default_location_is_outside_the_repository(monkeypatch, tmp_path):

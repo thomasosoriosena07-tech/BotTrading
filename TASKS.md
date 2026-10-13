@@ -604,3 +604,17 @@ interfaz Gateway (query/submit); solo existe un servidor simulado en pruebas.
 - Pruebas con un servidor simulado que ACEPTA un id repetido si la orden
   anterior está FILLED: repetir la misma intención (también tras recargar
   el registro) envía 0. 505 passed.
+- Revisión de Codex de 9c819ec (transmitida por el usuario): no seguro para
+  F2b-2 todavía. Corregido: (P1) bloqueo de instancia única (msvcrt/fcntl
+  sobre orders.lock, no bloqueante; el sistema lo libera si el proceso
+  muere) tomado al abrir el registro y exigido para escribir; probado
+  también con un proceso real distinto; elimina además la colisión del
+  temporal .part. (P1) El registro solo se crea con create=True
+  (inicialización explícita): si faltan registro y ancla a la vez se
+  detiene en vez de empezar de cero, y nunca se reinicializa uno existente.
+  (P2) Tras un GatewayRejected se consulta igualmente (3 respuestas
+  coherentes): una orden ejecutada no queda oculta como REJECTED; el
+  contrato del adaptador queda escrito. (P2) adjudicate_not_sent exige un
+  CoverageProof (lo producirá la reconciliación de F2b-2) que cubra el
+  símbolo y el día; un booleano suelto se rechaza. La aprobación la recogerá
+  de forma interactiva el comando de F4. 513 passed.
