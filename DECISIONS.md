@@ -341,6 +341,33 @@ Interpretación fijada de antemano (escenario base salvo que se diga):
   una nueva evaluación exigirá datos nuevos (meses posteriores a
   2026-09) como nuevo holdout.
 
+## D024 — Resultado del holdout final (abierto una vez, 2026-10-13)
+Estado: Registrado. No se modifica la estrategia a la vista de este
+resultado (D023).
+
+- Comando: `python -m bottrading.holdout --binance data/BTCUSDT-1d
+  --candidate trend_filter:window=50 --open-holdout`, con el código del
+  commit 45afaa9 (publicado antes de ejecutar). Salida en
+  reports/holdout_BTCUSDT-1d/ (SHA-256 holdout.md ba3781c0...,
+  trades.csv 5cd321c2..., equity.csv 98b91cf2...).
+- Holdout 2025-05-26 a 2026-09-30 (493 velas diarias), escenario base:
+  estrategia +4,48 % neto (anualizado +3,30 %), buy-and-hold -23,51 %
+  (anualizado -18,03 %). Drawdown 26,2 % frente a 53,0 %; volatilidad
+  25,4 % frente a 41,5 %; Sharpe 0,25 frente a -0,27. 35 operaciones,
+  17,6 % de idas y vueltas ganadoras, costes ejecutados 464,58.
+- Reglas de D023: gana más que buy-and-hold: sí; mejor Sharpe: sí;
+  menor riesgo: sí; robusta a costes (bajo/base/alto): sí.
+- Sensibilidad: sin costes +10,27 %; bajo +6,57 %; base +4,48 %;
+  alto -1,02 % (la diferencia con buy-and-hold sigue siendo positiva).
+- Lectura honesta: el holdout fue un periodo bajista de BTC. La
+  estrategia ganó a buy-and-hold sobre todo por estar fuera del mercado
+  en las caídas, como cabe esperar de un filtro de tendencia; en la
+  validación alcista (D022) ganó menos que buy-and-hold. Es un cambio de
+  rentabilidad por protección que depende del régimen, no una máquina de
+  ganancias. Su ganancia absoluta (+3,3 % anual) es pequeña y los costes
+  se comen más de la mitad de la ganancia bruta. Un holdout de un solo
+  activo no demuestra ventaja estadística.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).

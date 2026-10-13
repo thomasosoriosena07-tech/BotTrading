@@ -75,6 +75,14 @@ monthly → klines → símbolo → intervalo). Después:
 `.CHECKSUM` de cada ZIP cuando existe. El backtest no usa red;
 solo el descargador accede a data.binance.vision, sin claves API.
 
+### Fase 2: selección y holdout final
+
+    python -m bottrading.walkforward --binance data/BTCUSDT-1d --scheme daily
+    python -m bottrading.holdout --binance data/BTCUSDT-1d         --candidate trend_filter:window=50 --open-holdout
+
+La selección solo usa ventanas de validación; el holdout final se abre
+una vez, con el protocolo fijado de antemano (DECISIONS.md D020-D024).
+
 ## Arquitectura
 
 Paquete `src/bottrading/`, un módulo por responsabilidad:
@@ -85,6 +93,9 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `data.py` | Carga y validación del CSV OHLCV, normalización a UTC |
 | `binance.py` | Importación de klines de Binance (ZIP/CSV, checksum) |
 | `download.py` | Descarga de klines públicos (único módulo con red) |
+| `splits.py` | Particiones walk-forward y holdout final |
+| `walkforward.py` | Selección de estrategia y parámetros en validación |
+| `holdout.py` | Evaluación única del holdout final |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |

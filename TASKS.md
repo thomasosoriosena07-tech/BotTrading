@@ -44,7 +44,7 @@ holdout final, que se evalúa una sola vez (T017).
   de selección fijado antes de ejecutar; se registran TODAS las
   combinaciones (estrategias × parámetros) con sus métricas por ventana
   y el número total de pruebas.
-- [ ] T017 — Evaluación final en el holdout e informe comparativo.
+- [x] T017 — Evaluación final en el holdout e informe comparativo.
   Aceptación: el holdout se ejecuta una sola vez con la selección
   fijada; resultados por ventana walk-forward y del holdout por
   separado; número total de combinaciones y estrategias probadas;
@@ -331,3 +331,19 @@ DECISIONS.md (D022).
   D022 queda respaldada: 35,6 % frente a 48,8 %); protocolo del holdout
   (escenarios de costes e interpretación) registrado en D023 ANTES de
   abrirlo. Selección sin cambios. -> 302 passed.
+
+## Registro T017 (Claude Code, 2026-10-13)
+Orden seguido: protocolo D023 registrado y publicado (bc783bb) ->
+código del holdout probado solo con datos sintéticos y publicado
+(45afaa9) -> apertura única del holdout con autorización del usuario
+("abre el holdout") -> resultado registrado en D024 sin cambios.
+Archivos: src/bottrading/holdout.py, tests/test_holdout.py,
+src/bottrading/report.py (write_holdout_report), DECISIONS.md (D023,
+D024), readme.md (fase 2).
+- Pruebas: escenarios = D023, solo velas del holdout, igualdad con la
+  evaluación directa, costes mayores nunca ayudan, reglas del
+  veredicto, confirmación --open-holdout obligatoria, candidata dentro
+  de la rejilla, informe reproducible.
+- Resultado: ver D024 (estrategia +4,48 %, buy-and-hold -23,51 %, en un
+  holdout bajista; las 4 reglas de D023 se cumplen).
+- `.venv\Scripts\python -m pytest -q` -> 317 passed.
