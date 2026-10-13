@@ -129,11 +129,11 @@ def _parse_row(
     values = {name: _cell(row[index], name) for name, index in columns.items()}
     candle = Candle(
         timestamp=parse_timestamp(values["timestamp"], epoch_unit),
-        open=_to_float(values["open"], "open"),
-        high=_to_float(values["high"], "high"),
-        low=_to_float(values["low"], "low"),
-        close=_to_float(values["close"], "close"),
-        volume=_to_float(values["volume"], "volume"),
+        open=parse_float(values["open"], "open"),
+        high=parse_float(values["high"], "high"),
+        low=parse_float(values["low"], "low"),
+        close=parse_float(values["close"], "close"),
+        volume=parse_float(values["volume"], "volume"),
     )
     validate_candle(candle)
     return candle
@@ -145,7 +145,7 @@ def _cell(value: str, column: str) -> str:
     return value
 
 
-def _to_float(raw: str, name: str) -> float:
+def parse_float(raw: str, name: str) -> float:
     try:
         value = float(raw)
     except ValueError as exc:

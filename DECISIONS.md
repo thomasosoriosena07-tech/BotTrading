@@ -186,8 +186,32 @@ revisión de Codex.
   aprobación específica antes de implementarlo.
 - Riesgo asumido: aunque un resultado out-of-sample sea bueno, no
   garantiza rentabilidad futura; se informará siempre así.
+- Tras la revisión de Codex: el walk-forward usado para elegir es
+  validación, no prueba final. Un holdout final separado se abre una
+  sola vez, cuando estrategias, rejilla y criterio estén fijados. El
+  recuento de pruebas múltiples incluye estrategias y parámetros.
+- La comisión de 0,1 % (D014) es un supuesto configurable; el coste
+  real en Binance depende del tipo de cuenta y de orden.
+
+## D018 — Importación de klines de Binance
+Estado: Aprobada (diseño revisado por Codex en el plan de la fase 2)
+
+- src/bottrading/binance.py lee ZIP (un único CSV dentro) o CSV
+  extraído; sin red. CLI: `--binance <archivos o carpetas>`, excluyente
+  con `--csv`.
+- Columnas por posición: open_time, open, high, low, close, volume,
+  close_time; las 5 restantes se ignoran. Se exigen 12 columnas.
+- Unidad por magnitud: >= 1e14 µs, >= 1e11 ms, otro valor es error.
+  Conversión exacta con enteros (sin coma flotante).
+- Misma validación de velas que el cargador CSV (validate_candle);
+  close_time > open_time; duplicados entre archivos con archivo:línea.
+- `.CHECKSUM` junto al archivo: si existe y no coincide, error; si
+  falta en un ZIP, aviso en el log y "sin .CHECKSUM" en el informe.
+- La vela usa open_time como timestamp (inicio de la vela).
 
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
-- Fase 2: proporción ajuste/prueba y número de ventanas walk-forward
-  (se propondrán en T014).
+- Fase 2: particiones de T014. Propuesta de Codex recogida en TASKS.md
+  (holdout ~20 %, >= 1 año para métricas anualizadas; diario 2 años +
+  5 × 6 meses; horario 6 meses + 5 × 1 mes). Se fijará como decisión
+  al implementar T014.

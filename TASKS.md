@@ -15,25 +15,42 @@
 - [x] T012 — Ejecutar el MVP completo con datos de ejemplo.
 
 ## Fase 2 (ver PROJECT_SPEC.md "Fase 2" y DECISIONS.md D017)
-- [ ] T013 — Importar CSV de klines de Binance.
-  Aceptación: lee el formato sin cabecera (open_time ms, OHLCV, ...)
-  con la misma validación que load_ohlcv_csv; detecta epoch en ms o
-  µs; pruebas con archivos sintéticos con ese formato.
-- [ ] T014 — División temporal y walk-forward.
-  Aceptación: tramos de ajuste/prueba sin solapamiento; las medias
-  del tramo de prueba se calientan con datos anteriores sin operar en
-  ellos; prueba de que cambiar el tramo de prueba no altera la
-  selección de parámetros.
-- [ ] T015 — Búsqueda acotada de parámetros en el tramo de ajuste.
-  Aceptación: rejilla explícita y pequeña; todas las combinaciones y
-  sus métricas quedan registradas; criterio de selección fijado antes
-  de ejecutar; el tramo de prueba se evalúa una sola vez.
-- [ ] T016 — Hasta dos estrategias adicionales.
+Reordenado tras la revisión de Codex del plan: todas las estrategias,
+la rejilla y el criterio de selección se fijan ANTES de abrir el
+holdout final, que se evalúa una sola vez (T017).
+- [x] T013 — Importar klines de Binance (ZIP o CSV).
+  Columnas: 0 open_time, 1 open, 2 high, 3 low, 4 close, 5 volume,
+  6 close_time; 7-11 se ignoran. Sin cabecera (se tolera una cabecera
+  con nombres). Unidad del open_time por magnitud: >= 1e14 µs (spot
+  desde 2025), si no ms (>= 1e11); otro valor es error. Misma
+  validación que load_ohlcv_csv; close_time > open_time; duplicados
+  entre archivos con archivo:línea; verifica `.CHECKSUM` si existe.
+  Pruebas con archivos sintéticos con ese formato (sin red).
+- [ ] T014 — Particiones temporales.
+  Aceptación: holdout final = último ~20 % (>= 1 año natural si se
+  publican métricas anualizadas; si no alcanza, la muestra se declara
+  insuficiente para ellas); el resto se divide en ventanas
+  walk-forward (ajuste creciente + validación) sin solapamiento.
+  Diseño inicial: diario, 2 años de ajuste inicial y 5 ventanas de
+  6 meses; horario, 6 meses y 5 ventanas de 1 mes. Las medias se
+  calientan con datos anteriores sin operar en ellos. Prueba de que
+  alterar el holdout no cambia nada de la selección.
+- [ ] T015 — Hasta dos estrategias adicionales.
   Aceptación: misma interfaz de señales; prueba de prefijos (no
   look-ahead) para cada una; costes y ejecución idénticos.
-- [ ] T017 — Informe comparativo out-of-sample.
-  Aceptación: in-sample y out-of-sample por separado, número de
-  combinaciones probadas, buy-and-hold en el mismo tramo, avisos.
+- [ ] T016 — Selección en walk-forward (sin tocar el holdout).
+  Aceptación: rejilla explícita y pequeña para cada estrategia; criterio
+  de selección fijado antes de ejecutar; se registran TODAS las
+  combinaciones (estrategias × parámetros) con sus métricas por ventana
+  y el número total de pruebas.
+- [ ] T017 — Evaluación final en el holdout e informe comparativo.
+  Aceptación: el holdout se ejecuta una sola vez con la selección
+  fijada; resultados por ventana walk-forward y del holdout por
+  separado; número total de combinaciones y estrategias probadas;
+  buy-and-hold en los mismos tramos; sensibilidad a costes (comisión
+  0,1 % es un supuesto configurable, no el coste real garantizado);
+  limitaciones: supervivencia (solo símbolos existentes hoy), cambios
+  de régimen. Resultados desfavorables se publican igual.
 - [ ] T018 — Revisión independiente de la fase 2 con Codex.
 - [ ] T019 — Paper trading con datos públicos en tiempo real.
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
@@ -45,7 +62,7 @@
 - Registrar nuevas tareas solo si aportan valor al proyecto.
 - Indicar archivos relevantes y criterios de aceptación.
 - MVP completado (T001-T012). Fase 2 aprobada por el usuario; plan
-  pendiente de revisión de Codex antes de empezar T013.
+  revisado por Codex ("listo para empezar T013") y reordenado.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -221,3 +238,25 @@ Criterios de aceptación de PROJECT_SPEC.md:
 - [x] Sin datos futuros (pruebas de prefijos y de recorte).
 - [x] Se genera un informe documentado.
 - [x] Ejecución simulada por defecto; sin red, claves ni órdenes reales.
+
+## Registro T013 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/binance.py y tests/test_binance.py (nuevos);
+src/bottrading/__main__.py (--binance), src/bottrading/report.py
+(varios archivos con SHA-256 y estado del checksum),
+src/bottrading/data.py (parse_float público), tests/test_report.py,
+readme.md, DECISIONS.md (D018). Plan de fase 2 reordenado según la
+revisión de Codex (holdout final separado; D017 ampliada).
+- Datos del usuario en data/: BTCUSDT 1h 2026-07, -08, -09 (2208
+  velas, sin huecos, open_time en µs). Checksums de agosto y
+  septiembre verificados; julio sin .CHECKSUM (en data/ está el de
+  junio, cuyo ZIP falta).
+- `python -m bottrading --binance data --fast 24 --slow 72` -> OK.
+  Resultado (3 meses, no concluyente): estrategia +12.57 % neto,
+  buy-and-hold +42.33 %.
+- El informe del ejemplo sintético no cambia (SHA-256 4b04ea3d...).
+- `.venv\Scripts\python -m pytest -q` -> 209 passed.
+- Revisión Codex: "requiere cambios menores". Corregido: ZIP con CRC
+  dañado y timestamps enormes ahora dan DataValidationError (4 pruebas);
+  nota pendiente de DECISIONS actualizada -> 213 passed.
+- Para T014 los datos no bastan: 3 meses horarios < 6 meses de ajuste
+  inicial + 5 ventanas de 1 mes + holdout.

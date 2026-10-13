@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from bottrading.backtest import BacktestResult
+from bottrading.binance import verify_checksum
 from bottrading.data import Candle
 from bottrading.metrics import Comparison, Metrics, compute_metrics, irregular_gaps
 
@@ -27,7 +28,7 @@ DISCLAIMER = (
 def write_report(
     out_dir: Path,
     *,
-    data_path: Path,
+    data_paths: Sequence[Path],
     candles: Sequence[Candle],
     fast: int,
     slow: int,
@@ -50,7 +51,8 @@ def write_report(
         "equity": out_dir / "equity.csv",
     }
     markdown = render_markdown(
-        data_path=Path(data_path), candles=candles, fast=fast, slow=slow,
+        data_paths=[Path(path) for path in data_paths], candles=candles,
+        fast=fast, slow=slow,
         strategy=strategy, comparison=comparison,
     )
     paths["report"].write_text(markdown, encoding="utf-8", newline="\n")
@@ -61,7 +63,7 @@ def write_report(
 
 def render_markdown(
     *,
-    data_path: Path,
+    data_paths: Sequence[Path],
     candles: Sequence[Candle],
     fast: int,
     slow: int,
@@ -77,8 +79,7 @@ def render_markdown(
         "",
         "## Datos",
         "",
-        f"- Archivo: `{data_path.name}` (identificado por su SHA-256)",
-        f"- SHA-256: `{file_sha256(data_path)}`",
+        *_data_files(data_paths),
         f"- Velas: {len(candles)}",
         f"- Desde: {candles[0].timestamp.isoformat()}",
         f"- Hasta: {candles[-1].timestamp.isoformat()}",
@@ -125,6 +126,25 @@ def render_markdown(
         "",
     ]
     return "\n".join(lines)
+
+
+def _data_files(paths: Sequence[Path]) -> list[str]:
+    """Nombre y SHA-256 de cada archivo; no la ruta (no depende de la ubicación)."""
+    if len(paths) == 1:
+        return [
+            f"- Archivo: `{paths[0].name}` (identificado por su SHA-256)",
+            f"- SHA-256: `{file_sha256(paths[0])}`",
+        ]
+    return [f"- Archivos ({len(paths)}), identificados por su SHA-256:"] + [
+        f"  - `{path.name}`: `{file_sha256(path)}` ({_checksum_label(path)})"
+        for path in paths
+    ]
+
+
+def _checksum_label(path: Path) -> str:
+    # verify_checksum lanza error si el .CHECKSUM existe y no coincide.
+    return "checksum verificado" if verify_checksum(path) else "sin .CHECKSUM"
+
 
 
 def file_sha256(path: Path) -> str:

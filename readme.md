@@ -59,6 +59,17 @@ con fechas ISO 8601 con zona horaria o epoch en milisegundos
 (`--epoch-unit s` para segundos). El dataset de ejemplo se regenera con
 `python examples/generate_synthetic.py`.
 
+### Datos históricos de Binance
+
+Descargar a mano los ZIP de klines (y sus `.CHECKSUM`) desde
+data.binance.vision (Spot → monthly → klines → símbolo → intervalo) y
+guardarlos en `data/` (ignorada por Git). Después:
+
+    python -m bottrading --binance data --fast 24 --slow 72
+
+`--binance` acepta carpetas o archivos `.zip`/`.csv`. Se verifica el
+`.CHECKSUM` de cada ZIP cuando existe. No se usan claves API ni red.
+
 ## Arquitectura
 
 Paquete `src/bottrading/`, un módulo por responsabilidad:
@@ -67,6 +78,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 |---|---|
 | `config.py` | `BacktestConfig`: capital, comisión, slippage, tamaño de posición |
 | `data.py` | Carga y validación del CSV OHLCV, normalización a UTC |
+| `binance.py` | Importación de klines de Binance (ZIP/CSV, checksum) |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |

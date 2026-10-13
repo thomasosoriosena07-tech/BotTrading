@@ -35,7 +35,7 @@ def build_report(csv_path, out_dir, config=None):
     strategy = run_backtest(candles, crossover_signals(closes, 3, 6), config)
     benchmark = run_backtest(candles, buy_and_hold_signals(len(candles)), config)
     paths = write_report(
-        out_dir, data_path=csv_path, candles=candles, fast=3, slow=6,
+        out_dir, data_paths=[csv_path], candles=candles, fast=3, slow=6,
         strategy=strategy, benchmark=benchmark,
     )
     return paths, strategy, benchmark
@@ -111,7 +111,7 @@ def test_equity_csv_has_both_curves(csv_path, tmp_path):
 def test_report_rejects_empty_candles(tmp_path):
     empty = run_backtest([], [], BacktestConfig(initial_capital=1000))
     with pytest.raises(ValueError, match="sin velas"):
-        write_report(tmp_path, data_path=tmp_path / "x.csv", candles=[], fast=1,
+        write_report(tmp_path, data_paths=[tmp_path / "x.csv"], candles=[], fast=1,
                      slow=2, strategy=empty, benchmark=empty)
 
 
