@@ -64,7 +64,8 @@ holdout final, que se evalúa una sola vez (T017).
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
-  F0 (documento D030) hecho; pendiente de revisión de Codex. Lectura de
+  F0 (documento D030) hecho y revisado. F1 hecho; pendiente de revisión
+  de Codex. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
@@ -488,3 +489,23 @@ AGENTS.md y CLAUDE.md (excepción acotada), TASKS.md. Sin código.
   tolerancia de BNB y parada ante otros activos; clave de solo lectura
   (sin TRADE) para F3; eliminada la fecha de disponibilidad no
   corroborada.
+
+## Registro T021 F1 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/execution.py (nuevo), tests/conftest.py (nuevo),
+tests/test_execution.py (nuevo), readme.md. paper.py sin cambios. Sin red.
+- execution.py: clientOrderId determinista (bt-SÍMBOLO-AAAAMMDD-B|S,
+  formato ^[a-zA-Z0-9-_]{1,36}$); decide() puro con la semántica del
+  motor y presupuesto opcional no reinvertible; check_limits() con los
+  límites de D030 (sin reducir órdenes: LimitExceeded); run_local()
+  ejecuta intenciones con el modelo de costes de D014 (reutiliza
+  backtest._buy/_sell) y la herencia de posición de D020.
+- conftest.py: red bloqueada en tiempo de ejecución en TODAS las pruebas
+  (connect, connect_ex, create_connection, getaddrinfo) y hash de cada
+  archivo de paper/ antes y después de la suite. Ejecutar la suite con
+  la tarea D028 deshabilitada o fuera de las 08:00.
+- Pruebas: paridad exacta (floats) de run_local con paper.simulate en
+  12 series sintéticas y con fin de tramo; paridad byte a byte con una
+  COPIA de paper/ledger.csv usando los datos reales hasta el día del
+  ancla (se salta si no hay data/); límites justo por debajo, en y por
+  encima; compra tras ganancia (1200 -> 1000) y tras pérdida (800).
+  397 passed, 0 skipped; paper/ sin cambios (git status limpio).
