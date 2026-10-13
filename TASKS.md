@@ -3,7 +3,7 @@
 ## Estado
 - [x] T001 — Inspeccionar el repositorio y el entorno.
 - [x] T002 — Crear estructura mínima del paquete Python.
-- [ ] T003 — Configurar dependencias y entorno de desarrollo.
+- [x] T003 — Configurar dependencias y entorno de desarrollo.
 - [ ] T004 — Implementar carga y validación de CSV.
 - [ ] T005 — Implementar señales de medias móviles.
 - [ ] T006 — Implementar motor de backtesting.
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T003.
+- El siguiente paso prioritario es T004.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -42,7 +42,18 @@ Archivos: pyproject.toml, src/bottrading/__init__.py, tests/test_package.py.
 - Verificado: pyproject.toml se parsea con tomllib; el paquete se
   importa con src/ en sys.path y el test de humo pasa invocado a mano.
 - NO verificado: pytest e instalación con `pip install -e .`
-  (pytest no está instalado; se hará en T003 dentro de .venv).
+  (verificado después en T003).
 - requires-python >=3.11 declarado; solo probado con 3.13.9.
 - Módulos del MVP (config, data, strategy...) no creados: cada tarea
   creará el suyo para evitar archivos vacíos.
+
+## Registro T003 (Claude Code, 2026-10-13)
+Archivos: pyproject.toml (extra dev), .gitignore, readme.md, DECISIONS.md (D010).
+Comandos y resultados:
+- `python -m venv .venv` -> OK (Python 3.13.9).
+- `.venv\Scripts\python -m pip install -e ".[dev]"` -> OK
+  (bottrading 0.1.0 editable, pytest 9.1.1; requiere acceso a PyPI).
+- `.venv\Scripts\python -m pytest -v` -> 1 passed.
+- .gitignore: añadido *.egg-info/, build/, dist/; corregido
+  "**pycache**/" -> "__pycache__/". Verificado con git status --ignored.
+- Riesgo abierto: .venv dentro de OneDrive (sincronización).

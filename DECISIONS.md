@@ -53,7 +53,15 @@ Paquete en src/bottrading/, configurado con pyproject.toml.
 Motivo: `pip install -e .` hace el paquete importable sin manipular
 rutas y permite verificar la instalación en un entorno limpio.
 
+## D010 — Dependencias mínimas
+Estado: Aprobada
+
+Única dependencia por ahora: pytest>=8, como extra de desarrollo
+(`pip install -e ".[dev]"`). El uso de pandas se decidirá en T004,
+cuando la carga de CSV lo justifique o no.
+
 ## Pendientes de decisión
+- ¿pandas para T004 o solo biblioteca estándar?
 - Precio de ejecución: apertura de la vela siguiente + slippage.
 - Detección de velas incompletas en CSV.
 - Fechas sin zona horaria: rechazar o asumir UTC.

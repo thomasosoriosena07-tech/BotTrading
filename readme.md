@@ -19,14 +19,17 @@ En desarrollo. El MVP utiliza exclusivamente simulación.
 
 ## Instalación en Windows
 
-Desde la raíz del proyecto:
+Desde la raíz del proyecto, en PowerShell:
 
     python -m venv .venv
-    .venv\Scripts\activate
+    .\.venv\Scripts\Activate.ps1
     python -m pip install --upgrade pip
+    python -m pip install -e ".[dev]"
 
-Instalar las dependencias documentadas en requirements.txt
-cuando ese archivo esté disponible.
+En CMD, activar con `.venv\Scriptsctivate.bat`.
+
+Las dependencias se declaran en pyproject.toml. El extra `dev`
+añade las herramientas de prueba (pytest).
 
 ## Pruebas
 
