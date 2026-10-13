@@ -467,19 +467,31 @@ hacer commits automáticos.
   (UTC-5; el día UTC cierra a las 19:00 locales), o al encender el equipo
   si estaba apagado.
 - Pasos: descarga de días cerrados (D027) -> `python -m bottrading.paper`
-  -> si paper/ cambió: commit SOLO de paper/ ("paper: datos hasta
-  <día> (automático, D028)") y push normal a origin/main. Nunca --force;
-  nunca otros archivos.
-- Si un paso falla (día aún no publicado, datos con huecos, error de
-  integridad del diario), no hay commit; el error queda en
-  reports/automation/paper_<fecha>.log (ignorado por Git) y se reintenta
-  al día siguiente.
+  -> comprobación de seguridad -> si paper/ cambió: commit SOLO de
+  paper/ ("paper: datos hasta <día> (automatico, D028)") -> push normal
+  a origin/main de lo pendiente. Nunca --force; nunca otros archivos.
+- Comprobación de seguridad antes del commit (revisión de Codex): la
+  rama debe ser main y todos los commits pendientes de publicar
+  (origin/main..HEAD) deben ser automáticos (ese mensaje y solo
+  archivos de paper/). Si hay cualquier otro, el script se detiene sin
+  hacer commit, para no publicar trabajo ajeno. Códigos de
+  `git diff --cached` distintos de 0 y 1 se tratan como error.
+- Si falla un paso ANTERIOR al commit (día aún no publicado, datos con
+  huecos, error de integridad, comprobación de seguridad), no hay
+  commit. Si falla el PUSH, el commit automático queda local y se
+  publica en la ejecución siguiente (la comprobación lo admite por ser
+  automático). Errores en reports/automation/paper_<fecha>.log (ignorado
+  por Git).
 - Integridad del diario reforzada (revisión de Codex de T019):
   paper/ledger.state ancla último día, número de filas y SHA-256 del
   diario. Detecta truncamientos, ediciones, borrado del diario o del
   ancla, retrocesos de datos y filas nuevas con fecha ya simulada. Un
   diario existente sin ancla solo se ancla con --init-anchor si se
-  reproduce exactamente.
+  reproduce exactamente (--init-anchor falla si no hay diario o ya tiene
+  ancla).
+- Límite reconocido: el ancla no está firmada; quien modifique a la vez
+  datos, diario y ancla fuera de Git puede eludirla. La trazabilidad
+  externa es el historial de Git en GitHub (un commit por día).
 - Para pararlo: deshabilitar o borrar la tarea programada.
 
 ## Pendientes de decisión

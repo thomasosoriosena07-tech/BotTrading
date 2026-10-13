@@ -417,3 +417,13 @@ tests/test_download.py, readme.md.
   verificado aún: el camino de commit + push automático, que necesita un
   día nuevo cerrado; primera oportunidad 2026-10-14 08:00.
 - `.venv\Scripts\python -m pytest -q` -> 360 passed.
+- Revisión Codex de D028: "requiere cambios". Aplicado: comprobación
+  antes del commit (rama main; solo commits automáticos de paper/
+  pendientes de publicar), push de lo pendiente tras el commit (si falla
+  se reintenta), códigos de git diff distintos de 0/1 = error,
+  --init-anchor falla sin diario o con ancla; D028 corregida y límite del
+  ancla sin firma documentado. Lógica de seguridad del script probada en
+  un repositorio temporal con remoto local (9 casos: sin pendientes,
+  automático, ajeno, mensaje automático con otro archivo, otra rama,
+  git diff con y sin cambios). Ejecución real del script: "OK".
+  `.venv\Scripts\python -m pytest -q` -> 361 passed.

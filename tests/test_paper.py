@@ -225,6 +225,16 @@ def test_init_anchor_requires_exact_reproduction(anchored):
     assert anchor_path(ledger).exists()
 
 
+def test_init_anchor_requires_an_existing_unanchored_ledger(anchored, tmp_path):
+    # Revisión de Codex: --init-anchor sin diario, o con ancla, es un error.
+    with pytest.raises(LedgerIntegrityError, match="diario existente sin ancla"):
+        update_ledger(tmp_path / "nuevo" / "ledger.csv", [], date(2026, 10, 1),
+                      init_anchor=True)
+    _, ledger, state, rows = anchored
+    with pytest.raises(LedgerIntegrityError, match="diario existente sin ancla"):
+        update_ledger(ledger, rows, state.last_day, init_anchor=True)
+
+
 def test_ledger_rejects_unexpected_header(tmp_path):
     ledger = tmp_path / "ledger.csv"
     ledger.write_text("otra,cabecera\n", encoding="utf-8")

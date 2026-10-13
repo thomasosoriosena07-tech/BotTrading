@@ -182,6 +182,9 @@ def update_ledger(path: Path, rows: list[list[str]], last_day: date,
     existing_bytes = path.read_bytes() if path.exists() else None
     anchor = read_anchor(anchor_file) if anchor_file.exists() else None
 
+    if init_anchor and (existing_bytes is None or anchor is not None):
+        raise LedgerIntegrityError(
+            "--init-anchor solo sirve para un diario existente sin ancla")
     if anchor is None and existing_bytes is not None and not init_anchor:
         raise LedgerIntegrityError(f"{path}: existe el diario pero falta su ancla "
                                    f"{anchor_file.name}")
@@ -209,7 +212,7 @@ def update_ledger(path: Path, rows: list[list[str]], last_day: date,
             raise LedgerIntegrityError(
                 f"{len(stale)} operaciones nuevas con fecha ya simulada "
                 f"(<= {anchor.last_day}): ¿se corrigieron datos históricos?")
-    if init_anchor and anchor is None and new_rows and existing_bytes is not None:
+    if init_anchor and new_rows:
         raise LedgerIntegrityError("--init-anchor exige reproducir el diario sin filas nuevas")
 
     content = _render_ledger(rows)
