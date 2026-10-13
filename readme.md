@@ -78,7 +78,7 @@ solo el descargador accede a data.binance.vision, sin claves API.
 ### Fase 2: selección y holdout final
 
     python -m bottrading.walkforward --binance data/BTCUSDT-1d --scheme daily
-    python -m bottrading.holdout --binance data/BTCUSDT-1d         --candidate trend_filter:window=50 --open-holdout
+    python -m bottrading.holdout --binance data/BTCUSDT-1d --candidate trend_filter:window=50 --open-holdout
 
 La selección solo usa ventanas de validación; el holdout final se abre
 una vez, con el protocolo fijado de antemano (DECISIONS.md D020-D024).
