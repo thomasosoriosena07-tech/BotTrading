@@ -27,7 +27,7 @@ holdout final, que se evalúa una sola vez (T017).
   entre archivos con archivo:línea; verifica `.CHECKSUM` si existe.
   Pruebas con archivos sintéticos con ese formato (sin red).
 - [x] T013b — Descargador de klines públicos (aprobado por el usuario, D019).
-- [ ] T014 — Particiones temporales.
+- [x] T014 — Particiones temporales.
   Aceptación: holdout final = último ~20 % (>= 1 año natural si se
   publican métricas anualizadas; si no alcanza, la muestra se declara
   insuficiente para ellas); el resto se divide en ventanas
@@ -280,3 +280,20 @@ readme.md, DECISIONS.md (D017 actualizada, D019).
   checksum incorrecto exige que no se cree nada. Descarga real de un
   mes a un directorio temporal tras el cambio -> OK.
   `.venv\Scripts\python -m pytest -q` -> 243 passed.
+
+## Registro T014 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/splits.py y tests/test_splits.py (nuevos),
+DECISIONS.md (D020).
+- plan_splits(timestamps, DAILY|HOURLY) -> SplitPlan (ventanas y
+  holdout); evaluate_segment(candles, start, end, signal_fn, config).
+- Pruebas: estructura y no solapamiento, meses de calendario, ajuste
+  mínimo, datos insuficientes, holdout no anualizable, calentamiento
+  causal, segmento sin órdenes arrastradas, alterar precios del holdout
+  no cambia ningún resultado de ajuste ni validación.
+- Plan sobre datos reales calculado SOLO con fechas; no se ha ejecutado
+  ningún backtest sobre BTCUSDT 1d.
+- `.venv\Scripts\python -m pytest -q` -> 265 passed.
+- Revisión Codex: "listo con cambios menores". Aplicado: herencia de
+  posición por tramo (estrategia y buy-and-hold entran a la vez; nuevo
+  initial_signal en run_backtest) y rechazo de fechas desordenadas en
+  plan_splits -> 271 passed.

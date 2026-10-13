@@ -57,24 +57,35 @@ class BacktestResult:
 
 
 def run_backtest(
-    candles: Sequence[Candle], signals: Sequence[Signal], config: BacktestConfig
+    candles: Sequence[Candle],
+    signals: Sequence[Signal],
+    config: BacktestConfig,
+    initial_signal: Signal = Signal.HOLD,
+    initial_signal_time: datetime | None = None,
 ) -> BacktestResult:
-    """Simula las señales sobre las velas con costes y límite de posición."""
+    """Simula las señales sobre las velas con costes y límite de posición.
+
+    `initial_signal` es una señal emitida antes de la primera vela (en
+    `initial_signal_time`); se ejecuta a la apertura de la primera vela.
+    Sirve para heredar la posición al evaluar un tramo (D020).
+    """
     _validate_inputs(candles, signals, config)
+    _validate_initial_signal(candles, initial_signal, initial_signal_time)
 
     cash = float(config.initial_capital)
     quantity = 0.0
     trades: list[Trade] = []
     equity: list[float] = []
-    pending: Signal = Signal.HOLD
+    pending: Signal = initial_signal
 
     for i, candle in enumerate(candles):
+        signal_time = candles[i - 1].timestamp if i else initial_signal_time
         if pending is Signal.BUY and quantity == 0:
-            trade = _buy(config, cash, candles[i - 1], candle)
+            trade = _buy(config, cash, signal_time, candle)
             cash, quantity = trade.cash_after, trade.quantity
             trades.append(trade)
         elif pending is Signal.SELL and quantity > 0:
-            trade = _sell(config, cash, quantity, candles[i - 1], candle)
+            trade = _sell(config, cash, quantity, signal_time, candle)
             cash, quantity = trade.cash_after, 0.0
             trades.append(trade)
         elif pending is not Signal.HOLD:
@@ -107,7 +118,7 @@ def _liquidation_value(config: BacktestConfig, cash: float, quantity: float,
     return cash + quantity * price * (1 - config.commission_rate)
 
 
-def _buy(config: BacktestConfig, cash: float, signal_candle: Candle,
+def _buy(config: BacktestConfig, cash: float, signal_time: datetime,
          candle: Candle) -> Trade:
     """Invierte `max_position_fraction` del efectivo, comisión incluida.
 
@@ -120,7 +131,7 @@ def _buy(config: BacktestConfig, cash: float, signal_candle: Candle,
     quantity = notional / price
     return Trade(
         side=Signal.BUY,
-        signal_time=signal_candle.timestamp,
+        signal_time=signal_time,
         execution_time=candle.timestamp,
         reference_price=candle.open,
         price=price,
@@ -132,13 +143,13 @@ def _buy(config: BacktestConfig, cash: float, signal_candle: Candle,
 
 
 def _sell(config: BacktestConfig, cash: float, quantity: float,
-          signal_candle: Candle, candle: Candle) -> Trade:
+          signal_time: datetime, candle: Candle) -> Trade:
     price = candle.open * (1 - config.slippage_rate)
     notional = quantity * price
     fee = notional * config.commission_rate
     return Trade(
         side=Signal.SELL,
-        signal_time=signal_candle.timestamp,
+        signal_time=signal_time,
         execution_time=candle.timestamp,
         reference_price=candle.open,
         price=price,
@@ -147,6 +158,19 @@ def _sell(config: BacktestConfig, cash: float, quantity: float,
         slippage_cost=quantity * (candle.open - price),
         cash_after=cash + notional - fee,
     )
+
+
+def _validate_initial_signal(
+    candles: Sequence[Candle], signal: Signal, signal_time: datetime | None
+) -> None:
+    if not isinstance(signal, Signal):
+        raise ValueError(f"initial_signal debe ser Signal, no {signal!r}")
+    if signal is Signal.HOLD:
+        return
+    if signal_time is None:
+        raise ValueError("initial_signal requiere initial_signal_time")
+    if candles and signal_time >= candles[0].timestamp:
+        raise ValueError("initial_signal_time debe ser anterior a la primera vela")
 
 
 def _validate_inputs(

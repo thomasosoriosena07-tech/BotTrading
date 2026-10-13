@@ -231,9 +231,32 @@ Estado: Aprobada por el usuario ("sí al script de descarga", 2026-10-13)
 - Destino por defecto data/<SYMBOL>-<interval>/ (ignorado por Git).
 - Las pruebas usan un servidor falso en memoria: ninguna usa la red.
 
+## D020 — Particiones temporales (walk-forward + holdout final)
+Estado: Aprobada (diseño propuesto por Codex en la revisión del plan)
+
+- src/bottrading/splits.py. Las particiones dependen solo de las fechas.
+- Holdout final: último 20 % de las velas. Si dura < 365 días se marca
+  como no anualizable (sin métricas anualizadas del holdout).
+- N ventanas de validación consecutivas de M meses de calendario que
+  terminan justo antes del holdout (se valida con lo más reciente).
+  Ajuste de cada ventana: todas las velas anteriores (crece). Error si
+  el ajuste inicial cubre menos de los meses exigidos.
+- Esquemas: DAILY = 24 meses de ajuste mínimo + 5 × 6 meses;
+  HOURLY = 6 meses + 5 × 1 mes.
+- evaluate_segment: señales calculadas con todo el historial hasta el
+  fin del segmento (calentamiento causal) y recortadas.
+- Herencia de posición (tras la revisión de Codex de T014, fijada antes
+  de ver resultados): cada tramo hereda la posición que la estrategia
+  tendría al llegar a él. Si su última señal anterior al tramo es BUY,
+  compra a la apertura de la primera vela del tramo, pagando costes;
+  si es SELL o no hay, empieza sin posición. Buy-and-hold sigue la
+  misma regla, así que ambos entran a la vez. El modo sin herencia
+  existe (inherit_position=False) pero no se usa para comparar.
+- plan_splits rechaza fechas no ordenadas estrictamente.
+- Datos reales BTCUSDT 1d (2020-01-01 a 2026-09-30, plan calculado sin
+  backtests): validaciones del 2022-11-26 al 2025-05-25; holdout del
+  2025-05-26 al 2026-09-30 (493 velas, anualizable).
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
-- Fase 2: particiones de T014. Propuesta de Codex recogida en TASKS.md
-  (holdout ~20 %, >= 1 año para métricas anualizadas; diario 2 años +
-  5 × 6 meses; horario 6 meses + 5 × 1 mes). Se fijará como decisión
-  al implementar T014.
+- Ninguna abierta para la fase 2 (particiones fijadas en D020).

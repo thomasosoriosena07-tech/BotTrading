@@ -251,6 +251,26 @@ def test_incoherent_candles_are_rejected(changes, message):
         run_backtest(candles, [B, H, H, H, H], NO_COSTS)
 
 
+def test_initial_signal_executes_at_first_open():
+    before = START - timedelta(hours=5)
+    result = run_backtest(make_candles(OPENS, CLOSES), [H] * 5, NO_COSTS,
+                          initial_signal=B, initial_signal_time=before)
+    (buy,) = result.trades
+    assert buy.signal_time == before
+    assert buy.execution_time == START
+    assert buy.price == 10.0
+
+
+def test_initial_signal_requires_an_earlier_time():
+    candles = make_candles(OPENS, CLOSES)
+    with pytest.raises(ValueError, match="requiere initial_signal_time"):
+        run_backtest(candles, [H] * 5, NO_COSTS, initial_signal=B)
+    with pytest.raises(ValueError, match="anterior a la primera vela"):
+        run_backtest(candles, [H] * 5, NO_COSTS, initial_signal=B, initial_signal_time=START)
+    with pytest.raises(ValueError, match="initial_signal debe ser Signal"):
+        run_backtest(candles, [H] * 5, NO_COSTS, initial_signal="buy")
+
+
 def test_invalid_signal_type_is_rejected():
     with pytest.raises(ValueError, match="tipo inválido"):
         run_backtest(make_candles(OPENS, CLOSES), [H, H, "buy", H, H], NO_COSTS)
