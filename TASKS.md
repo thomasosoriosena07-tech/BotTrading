@@ -427,3 +427,10 @@ tests/test_download.py, readme.md.
   automático, ajeno, mensaje automático con otro archivo, otra rama,
   git diff con y sin cambios). Ejecución real del script: "OK".
   `.venv\Scripts\python -m pytest -q` -> 361 passed.
+- Confirmación Codex de D028: "requiere cambios": un merge con mensaje
+  automático podía publicar archivos ajenos (diff-tree no lista cambios
+  de merges; Codex lo demostró). Aplicado: los merges pendientes cuentan
+  como ajenos y la diferencia acumulada origin/main..HEAD debe tocar
+  solo paper/. Pruebas de la guarda versionadas en
+  scripts/test_paper_daily_guard.ps1: 13/13 OK (incluido el merge).
+  Script real: "OK".
