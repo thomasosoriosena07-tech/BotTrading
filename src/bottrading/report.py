@@ -26,7 +26,8 @@ from bottrading.binance import verify_checksum
 from bottrading.data import Candle
 from bottrading.metrics import Comparison, Metrics, compute_metrics, irregular_gaps
 
-if TYPE_CHECKING:  # solo tipos: walkforward importa este módulo
+if TYPE_CHECKING:  # solo tipos: walkforward y holdout importan este módulo
+    from bottrading.holdout import HoldoutResult
     from bottrading.walkforward import SelectionResult, WindowScore
 
 DISCLAIMER = (
@@ -295,6 +296,109 @@ def _trial_row(rank, label: str, strategy: str, params: str, w: WindowScore) -> 
             "" if w.sharpe is None else repr(w.sharpe),
             repr(w.total_return), repr(w.max_drawdown), w.num_trades,
             "" if w.volatility is None else repr(w.volatility)]
+
+
+def write_holdout_report(
+    out_dir: Path,
+    *,
+    data_paths: Sequence[Path],
+    candles: Sequence[Candle],
+    result: HoldoutResult,
+) -> dict[str, Path]:
+    """holdout.md + trades.csv y equity.csv del escenario base (D023)."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    base = result.run("base")
+    paths = {
+        "holdout": out_dir / "holdout.md",
+        "trades": out_dir / "trades.csv",
+        "equity": out_dir / "equity.csv",
+    }
+    text = render_holdout_markdown(
+        data_paths=[Path(p) for p in data_paths], candles=candles, result=result)
+    paths["holdout"].write_text(text, encoding="utf-8", newline="\n")
+    _write_trades(paths["trades"], base.strategy)
+    _write_equity(paths["equity"], base.strategy, base.benchmark)
+    return paths
+
+
+def render_holdout_markdown(
+    *, data_paths: Sequence[Path], candles: Sequence[Candle], result: HoldoutResult
+) -> str:
+    plan, base, verdict = result.plan, result.run("base"), result.verdict
+    s, b = base.strategy_metrics, base.benchmark_metrics
+    first = candles[plan.holdout_start].timestamp.date().isoformat()
+    last = candles[plan.holdout_end - 1].timestamp.date().isoformat()
+    sensitivity = [
+        f"| {run.scenario.name} | {_pct(run.scenario.commission_rate, 3)} | "
+        f"{_pct(run.scenario.slippage_rate, 3)} | {_pct(run.strategy_metrics.total_return)} | "
+        f"{_pct(run.benchmark_metrics.total_return)} | {_pct(run.excess_return)} | "
+        f"{_num(run.strategy_metrics.sharpe)} | {_num(run.benchmark_metrics.sharpe)} |"
+        for run in result.runs
+    ]
+    lines = [
+        f"# Holdout final: `{result.candidate.label}` frente a buy-and-hold",
+        "",
+        DISCLAIMER,
+        "",
+        "Evaluación única con el protocolo fijado de antemano (DECISIONS.md "
+        "D023) y la combinación congelada antes de abrir el holdout (D022). "
+        "Nada de lo que aparece aquí se usó para elegir.",
+        "",
+        "## Datos",
+        "",
+        *_data_files(data_paths),
+        f"- Holdout: {first} a {last} ({plan.holdout_end - plan.holdout_start} velas)",
+        f"- Métricas anualizadas publicables: {_yes_no(plan.holdout_annualizable)}",
+        "- Calentamiento con todo el historial previo; la estrategia hereda su "
+        "posición al inicio del holdout (D020), igual que buy-and-hold.",
+        "",
+        "## Resultado principal (escenario base: comisión 0,1 %, slippage 0,05 %)",
+        "",
+        "| Métrica | Estrategia | Buy-and-hold |",
+        "|---|---:|---:|",
+        *_metric_rows(s, b),
+        "",
+        f"Diferencia de retorno total (estrategia − buy-and-hold): "
+        f"**{_pct(base.excess_return)}**",
+        "",
+        "## Interpretación (reglas de D023, aplicadas sin cambios)",
+        "",
+        f"- ¿Gana más que buy-and-hold? **{_yes_no(verdict.earns_more)}**",
+        f"- ¿Mejor ajustada al riesgo (Sharpe)? **{_yes_no_nd(verdict.better_risk_adjusted)}**",
+        f"- ¿Menor riesgo (drawdown y volatilidad)? **{_yes_no_nd(verdict.lower_risk)}**",
+        f"- ¿Robusta a costes (mismo signo en bajo, base y alto)? "
+        f"**{_yes_no(verdict.robust_to_costs)}**",
+        "- Sea cual sea el resultado, un único holdout de un solo activo no "
+        "demuestra una ventaja estadística. No se cambiará la estrategia a la "
+        "vista de este holdout; una nueva evaluación requiere datos nuevos.",
+        "",
+        "## Sensibilidad a costes",
+        "",
+        "| Escenario | Comisión | Slippage | Retorno estrategia | Retorno buy-and-hold "
+        "| Diferencia | Sharpe estrategia | Sharpe buy-and-hold |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        *sensitivity,
+        "",
+        "## Notas",
+        "",
+        *_notes("Estrategia", s),
+        *_notes("Buy-and-hold", b),
+        "",
+        "## Limitaciones",
+        "",
+        "- Un solo activo (BTCUSDT) que existe hoy: sesgo de supervivencia.",
+        "- Un solo periodo: el resultado depende del régimen de mercado.",
+        "- Selección previa entre 22 combinaciones en validación (D022).",
+        "- Costes y slippage son supuestos, no costes reales garantizados.",
+        "- Velas diarias cerradas; ejecución a la apertura siguiente.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _yes_no_nd(value: bool | None) -> str:
+    return "n/d" if value is None else _yes_no(value)
 
 
 def _selection_row(rank: str, label: str, windows: Sequence[WindowScore]) -> str:
