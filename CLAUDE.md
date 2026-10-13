@@ -23,5 +23,7 @@ Al terminar una tarea:
 
 ## Restricciones
 No implementar trading en vivo, conexiones a cuentas reales,
-órdenes reales ni gestión de credenciales de trading.
+órdenes reales ni gestión de credenciales de trading (única excepción:
+lectura de la credencial de una cuenta Binance DEMO según D030; el
+envío de órdenes demo requiere una aprobación posterior).
 No cambiar el alcance del proyecto sin aprobación.

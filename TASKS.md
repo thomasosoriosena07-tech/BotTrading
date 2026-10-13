@@ -63,6 +63,10 @@ holdout final, que se evalúa una sola vez (T017).
   solo archivos diarios públicos de data.binance.vision (D027).
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
   órdenes; las pruebas siguen sin red.
+- [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
+  F0 (documento D030) hecho; pendiente de revisión de Codex. Lectura de
+  cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
+  F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
 ## Reglas
 - Marcar una tarea como completada solo después de verificarla.
@@ -459,3 +463,19 @@ tests/test_paper.py, readme.md, DECISIONS.md (D029), paper/dashboard.html.
   equity.csv y ledger.csv, escala del SVG y guarda de red; 365 passed.
   Observación sin acción: svg_line_chart presupone series no vacías y
   clases CSS internas (no hay entrada de usuario que llegue ahí).
+
+## Registro T021 F0 (Claude Code, 2026-10-13)
+Archivos: DECISIONS.md (D030), PROJECT_SPEC.md (excepción y fase 3),
+AGENTS.md y CLAUDE.md (excepción acotada), TASKS.md. Sin código.
+- Plan revisado por Codex en tres rondas (v1 no llegó; v2 y v3 con
+  hallazgos). D030 incorpora los hallazgos abiertos de v3: tabla
+  ejecutable de peticiones, límites operativos, cobertura de la
+  reconciliación y comisiones en cualquier activo, almacenamiento de
+  secretos, esquema cerrado del contenido publicado, adjudicación
+  manual, definición de "repetir envía 0" y hashes de paper/ con la
+  tarea pausada.
+- Documentación oficial consultada (ver D030). Hallazgo relevante: el
+  servidor acepta un newClientOrderId repetido si la orden anterior
+  está llena, así que la deduplicación no puede depender de él.
+- Aprobación del usuario: (a) lectura demo. Pendiente: revisión de
+  Codex de D030 y aprobación (b) antes de F4.

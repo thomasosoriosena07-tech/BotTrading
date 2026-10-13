@@ -26,6 +26,9 @@ será exclusivamente backtesting y paper trading.
 - Prohibidas las órdenes reales y la conexión a cuentas de trading real.
 - No implementar apalancamiento, préstamos ni futuros en el MVP.
 - No solicitar, almacenar ni imprimir claves API o contraseñas.
+  Única excepción (D030): el código podrá LEER, sin mostrarla, la
+  credencial de una cuenta Binance DEMO que el usuario crea y guarda
+  fuera del repositorio. Los agentes nunca la piden ni la ven.
 - No desactivar las comprobaciones de riesgo para facilitar una prueba.
 - La simulación debe indicar claramente que no representa resultados reales.
 - Nunca presentar rentabilidad histórica como garantía de rentabilidad futura.

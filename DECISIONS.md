@@ -518,6 +518,249 @@ Estado: Aprobada por el usuario ("sí, prepáralo", 2026-10-13).
   de operaciones simuladas; puntos de control cuando se alcancen.
 - Actualización diaria (velas cerradas), no en tiempo real.
 
+## D030 — Integración futura con Binance Spot Demo Mode (T021)
+Estado: (a) lectura de la cuenta demo APROBADA por el usuario ("apruebo",
+2026-10-13, tras revisar el plan v3 y la revisión de Codex). (b) envío de
+órdenes demo NO aprobado: requiere una aprobación posterior y separada,
+antes de F4. Ninguna configuración, flag ni variable amplía este alcance.
+
+Qué cambia y qué no:
+- Excepción acotada a D006 y a PROJECT_SPEC ("claves API"): solo claves
+  de una cuenta Binance DEMO, creadas y guardadas por el usuario. Los
+  agentes nunca las solicitan, ven, escriben ni imprimen.
+- Producción sigue prohibida: no existirá ejecutor, host ni código para
+  ella. Pasar a dinero real sería otra decisión de alcance.
+- T019/D027 no cambia: paper/ sigue siendo la evaluación oficial, el
+  simulador paper sigue sin red y la estrategia queda congelada
+  (FROZEN_CANDIDATE, trend_filter 50, costes D014). Toda variante que se
+  evaluara en demo se registraría aquí; no hay ninguna.
+- Demo valida ejecución y reconciliación, NO rentabilidad. La propia
+  documentación de Binance dice que sus precios son "realistas", no
+  reales, y que lo que funciona en demo puede no funcionar en vivo.
+
+Documentación oficial consultada (2026-10-13, developers.binance.com/docs/
+binance-spot-api-docs: demo-mode/general-info, rest-api/request-security,
+rest-api/trading-endpoints, rest-api/account-endpoints,
+rest-api/general-api-information, errors, filters):
+- Demo Mode disponible desde 2026-01-29. REST: https://demo-api.binance.com/api.
+  Mismas funciones, límites de peticiones y filtros que el exchange real;
+  saldo reiniciable desde la web; durante el mantenimiento no se pueden
+  crear ni cancelar órdenes. Claves en demo.binance.com (API Management).
+- Tipos de clave: HMAC, RSA y Ed25519. Se usará HMAC-SHA256 porque basta
+  la biblioteca estándar (hmac); Ed25519 exigiría una dependencia.
+  Vector oficial para las pruebas: payload
+  "symbol=LTCBTC&side=BUY&type=LIMIT&timeInForce=GTC&quantity=1&price=0.1&recvWindow=5000&timestamp=1499827319559"
+  -> c8db56825ae71d6d79447849e617115f4a920fa2acdcab2b053c4b2838bd6b71
+  (con el secretKey de ejemplo de la documentación).
+- recvWindow por defecto 5000 ms, máximo 60000; se usará <= 5000.
+- newClientOrderId es "único entre las órdenes ABIERTAS" y un id repetido
+  "solo se acepta cuando la anterior está llena". Consecuencia: en órdenes
+  MARKET (que se llenan al instante) el servidor NO impide un duplicado
+  con el mismo id. La deduplicación depende de la consulta previa y del
+  ledger privado, no del servidor.
+- El formato del id solo está documentado para FIX: ^[a-zA-Z0-9-_]{1,36}$.
+  Se adopta ese formato, más restrictivo, también para REST.
+- 5XX y -1007: estado de ejecución DESCONOCIDO; se consulta antes de
+  cualquier otra acción. 429 y 418 traen Retry-After. -2010 "Duplicate
+  order sent." indica un id en uso; -2013 indica que la orden no existe.
+- allOrders y myTrades: límite de 1000 por página y ventana máxima de
+  24 h entre startTime y endTime; se paginan con orderId y fromId.
+  myTrades devuelve commission y commissionAsset por operación.
+- Filtros de órdenes MARKET: MARKET_LOT_SIZE y LOT_SIZE (minQty, maxQty,
+  stepSize) y NOTIONAL/MIN_NOTIONAL según applyMinToMarket/applyToMarket,
+  con un precio estimado por avgPriceMins.
+- No documentado y, por tanto, tratado como desconocido (diseño
+  conservador): comisiones de demo, si una orden MARKET puede quedar en
+  EXPIRED con llenado parcial, y el comportamiento de MARKET_LOT_SIZE
+  con stepSize=0.
+
+1. Barrera contra producción
+- Cada petición pasa por una tabla cerrada en código: (método, ruta) ->
+  parámetros obligatorios, parámetros opcionales y el patrón de cada
+  valor. Entradas: GET /api/v3/time, GET /api/v3/exchangeInfo,
+  GET /api/v3/account, GET /api/v3/order, GET /api/v3/openOrders,
+  GET /api/v3/allOrders, GET /api/v3/myTrades y GET /api/v3/ticker/bookTicker.
+  POST y DELETE /api/v3/order solo se añaden con la aprobación (b).
+- La validación se hace sobre la petición ya construida y firmada: el
+  esquema debe ser https, el host exactamente demo-api.binance.com y el
+  puerto 443 o ninguno; sin userinfo ni fragmento; la ruta, sin
+  codificación "%", debe estar en la tabla con su método. La query se
+  analiza con parse_qsl estricto: no se admiten claves duplicadas ni
+  claves fuera del esquema, y signature va siempre al final y debe ser
+  hexadecimal de 64 caracteres. Si algo falla, se lanza un error ANTES
+  de llamar al transporte.
+- El host y la tabla son constantes; no se leen de config, CLI ni
+  entorno. El opener usa ProxyHandler({}), con lo que se ignoran
+  HTTPS_PROXY, HTTP_PROXY y ALL_PROXY, y rechaza cualquier 3xx. El URL
+  final de la respuesta se recomprueba.
+- La guarda estática (D019) se amplía a exactamente dos módulos con red
+  (download.py y demo_client.py) y un test estático rechaza hosts de
+  producción en src/. Ambas son defensa adicional, no aislamiento.
+- --send-orders y BOTTRADING_DEMO_ORDERS=1 solo eligen entre dry-run y
+  envío dentro de demo, y solo existirán tras la aprobación (b).
+- Pruebas (transporte simulado que falla si se le llama): hosts de
+  producción (api.binance.com, api1-4, api-gcp, testnet), mayúsculas,
+  punto final, IP, puerto, userinfo, ruta codificada, ruta o método no
+  permitido, parámetro extra, parámetro duplicado, query alterada
+  después de firmar, signature con formato inválido, variables de proxy
+  definidas, 301/302/307 hacia producción y configuración vacía o
+  malformada.
+
+2. Límites operativos (fijos; solo se cambian con nueva aprobación)
+- Símbolos: BTCUSDT, ETHUSDT y SOLUSDT. Solo MARKET, solo BUY y SELL.
+- Capital ficticio: 1000 USDT por activo (3000 en total), llevado como
+  efectivo propio de cada activo en el ledger privado, como en paper.
+- BUY: quoteOrderQty = efectivo del activo en el ledger, con un máximo
+  de 1500 USDT por orden. SELL: exactamente la cantidad poseída según el
+  ledger, redondeada hacia abajo a stepSize, y nunca más que el saldo
+  real.
+- Como máximo 1 orden por símbolo y día, y 3 órdenes por día en total.
+  Exposición acumulada (valor de las posiciones a precio de referencia
+  más órdenes en curso) no mayor que 4500 USDT.
+- Al alcanzar un límite no se reduce la orden: se registra
+  LIMIT_BLOCKED, no se envía nada ese día y se avisa en el log.
+- Pruebas justo por debajo, en el límite y por encima, para cada límite.
+
+3. Cuenta y reconciliación
+- Cuenta demo DEDICADA, sin operaciones manuales ni otros bots. Lo
+  garantiza el usuario. Reiniciar el saldo desde la web cuenta como
+  actividad externa.
+- Línea base en el primer arranque autorizado: saldos de todos los
+  activos con saldo distinto de cero, cero órdenes abiertas y, para cada
+  símbolo, allOrders (limit=1000) debe devolver menos de 1000 órdenes;
+  se guarda el orderId máximo visto.
+- Saldo esperado = línea base + efecto de cada operación propia según
+  myTrades (cantidad, precio, commission y commissionAsset, sea cual sea
+  el activo de la comisión, incluido BNB).
+- Cobertura demostrable: en cada arranque se paginan allOrders y
+  myTrades desde el último id conocido hasta recibir una página con
+  menos elementos que el límite. Si una página falla, se trunca o hay
+  ids no contiguos con el ledger, la reconciliación es INCOMPLETA: el
+  proceso se detiene sin enviar.
+- Toda orden con prefijo bt- que no esté en el ledger, toda orden ajena
+  y toda diferencia de saldo fuera de la tolerancia (2 x stepSize en el
+  activo base y 0,01 USDT) detienen el proceso.
+- El bot no corrige nada por su cuenta. El usuario investiga, se
+  registra el incidente en TASKS.md y una nueva línea base solo se fija
+  con --rebaseline, aprobado explícitamente y registrado como evento.
+
+4. Órdenes parciales y remanentes
+- Tras cada orden se consultan su estado final, openOrders y myTrades.
+- No se envía nada para un símbolo mientras haya una orden abierta o su
+  última orden no esté en estado final (FILLED, CANCELED, EXPIRED,
+  REJECTED). Un remanente abierto se cancela por origClientOrderId (solo
+  si es del bot), se espera a confirmar el estado final y se adopta la
+  cantidad ejecutada real.
+- Pruebas: llenado parcial seguido de desconexión; reinicio con
+  remanente abierto; cancelación que falla; EXPIRED con llenado
+  parcial; señal contraria al día siguiente de un llenado parcial.
+
+5. Deduplicación, persistencia y adjudicación manual
+- clientOrderId = bt-<SÍMBOLO>-<AAAAMMDD de la señal>-<B|S>, siempre
+  dentro de ^[a-zA-Z0-9-_]{1,36}$. Una intención tiene un solo id.
+- Ledger privado de órdenes con ancla (hash, filas y último estado). Los
+  estados INTENT -> SENT -> ACK|UNKNOWN -> FINAL se escriben de forma
+  atómica ANTES de cada paso de red.
+- Antes de cualquier POST, el id se consulta (GET order) además de
+  revisar el ledger. Como el servidor acepta ids repetidos si la orden
+  anterior está llena, la consulta es obligatoria.
+- Timeout, 5XX, -1007 o un corte tras el POST pasan a UNKNOWN. Se hacen
+  como máximo 5 consultas con 2 s de espera, y se exigen 3 respuestas
+  consecutivas coherentes. Si la orden no aparece o las respuestas no
+  coinciden, se detiene el día sin reenviar.
+- Una respuesta que llegue tarde no cambia el estado: solo las
+  consultas lo cambian. "Duplicate order sent." se trata como "la orden
+  ya existe" y se consulta. Nunca se genera un id alternativo de forma
+  automática.
+- Si el ledger se pierde o su ancla no coincide, el proceso se detiene.
+  --rebuild-from-exchange reconstruye desde allOrders y myTrades y
+  muestra el resultado para que el usuario lo apruebe.
+- Adjudicación manual de un INTENT o SENT cuya orden no aparece:
+  --adjudicate <id> --not-sent solo se acepta si hay cobertura completa
+  (punto 3) y 3 consultas coherentes de "no existe". Añade el evento
+  ADJUDICATED_NOT_SENT con la aprobación del usuario, sin borrar el
+  historial. Las señales de la estrategia son cruces, no estados, así
+  que la señal perdida no se repite: la posición objetivo se toma de la
+  simulación local (LocalExecutor) y cualquier orden de alineación usa
+  un id nuevo con sufijo -R<n>, también con aprobación explícita. Nunca
+  se convierte en un reintento automático.
+- "Repetir envía 0" significa repetir la MISMA intención (mismo día y
+  mismo clientOrderId). Una prueba lo verifica.
+
+6. Secretos
+- Almacenamiento: el Administrador de credenciales de Windows (credencial
+  genérica "BotTrading-Demo", protegida por DPAPI con el usuario de
+  Windows). La crea el usuario con
+  `cmdkey /generic:BotTrading-Demo /user:bottrading /pass` y pega
+  "APIKEY:SECRET" cuando se le pide, así que la clave no queda en el
+  historial de la consola. No se usan .env ni variables de entorno.
+- Lectura con ctypes (CredReadW, biblioteca estándar) solo en el momento
+  de firmar. La clave no se pasa como argumento ni a procesos hijos, no
+  se escribe en archivos temporales y no figura en ningún repr. En los
+  tests se usa un lector falso inyectado.
+- La tarea programada corre como el mismo usuario (thoma, logon
+  interactivo, nivel limitado; comprobado el 2026-10-13), por lo que
+  puede leer la credencial. Se verifica en F3 desde la propia tarea.
+- Ni los logs ni las excepciones muestran cabeceras, query firmada ni
+  cuerpo: solo método, ruta sin query, código HTTP y código de Binance.
+  Prueba con claves falsas sobre caplog, str/repr de las excepciones,
+  archivos de salida y salida de la tarea.
+- Si una clave se filtra, se revoca en Binance; reescribir git no basta.
+
+7. Publicación automática
+- Estado privado FUERA del repositorio, en %LOCALAPPDATA%\BotTrading\demo\
+  (ledger de órdenes, respuestas crudas, logs del cliente y archivo STOP
+  del kill switch).
+- paper/ no recibe nada de demo. Lista cerrada de rutas por publicador:
+  paper (paper/ledger.csv, paper/ledger.state, paper/report.md,
+  paper/equity.csv, paper/dashboard.html) y demo (demo/summary.csv,
+  demo/report.md, demo/dashboard.html). La guarda de D028 se endurece:
+  ni merges ni archivos fuera de la lista en ningún commit de
+  origin/main..SHA ni en la diferencia acumulada.
+- Contenido con esquema cerrado: demo/summary.csv tiene columnas fijas y
+  cada valor debe cumplir su patrón (fecha ISO, símbolo de la lista,
+  B/S, estado de la lista, decimales con formato fijo). report.md y
+  dashboard.html se generan solo a partir de summary.csv ya validado,
+  sin texto libre.
+- Antes del push se vuelve a validar el contenido FINAL del SHA fijado
+  (git show SHA:ruta) contra su esquema. Si algo falla, se aborta. La
+  búsqueda de patrones de clave es solo defensa adicional.
+- Nunca se publican orderId, ids de cuenta, saldos totales, respuestas
+  crudas, cabeceras ni URLs.
+
+8. Protección de T019 durante la implementación
+- paper.py no se modifica. Los tests escriben solo en tmp_path; el test
+  de paridad del LocalExecutor usa una copia de paper/ en un directorio
+  temporal; una fixture bloquea sockets en los tests de backtest y paper.
+- Comprobación de hashes de paper/ antes y después de la suite, con la
+  tarea D028 deshabilitada mientras dura o fuera de la ventana de las
+  08:00.
+- El endurecimiento de la guarda (punto 7) debe pasar los 16 casos
+  actuales de scripts/test_paper_daily_guard.ps1 y aceptar los 5
+  archivos legítimos de paper/.
+
+Fases (T021)
+- F0: este documento. Aceptación: aprobación (a) del usuario (dada) y
+  revisión de Codex.
+- F1: sin red. Intención de orden, LocalExecutor y escritor de demo en
+  un módulo nuevo (punto 8).
+- F2a: sin red. Transporte, tabla de peticiones, proxies, redirecciones,
+  firma, credenciales y redacción (puntos 1 y 6).
+- F2b: sin red. Máquina de estados, ledger privado, reconciliación,
+  remanentes, deduplicación, adjudicación y guarda de publicación
+  (puntos 2 a 5 y 7).
+- F3: primera red, SOLO LECTURA. El usuario crea la cuenta dedicada y la
+  credencial; --check manual y desde la tarea programada; línea base.
+- F4: solo tras la aprobación (b). Código de envío revisado por Codex;
+  una orden manual; repetirla envía 0.
+- F5: tarea separada a las 00:05 UTC; métricas por separado (precio
+  previsto y ejecutado, latencia, spread, slippage frente al 0,05 % de
+  D014, comisión real frente al 0,1 %, llenados parciales, rechazos).
+  Aceptación: 30 días sin discrepancias ni duplicados. Mide operación,
+  no rentabilidad.
+- F6: informe de ejecución frente a D014. Ninguna fase lleva a
+  producción.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).

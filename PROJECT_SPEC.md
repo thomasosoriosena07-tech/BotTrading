@@ -72,7 +72,8 @@ Evitar complejidad prematura y dependencias innecesarias.
 
 ## Fuera de alcance
 - Trading en vivo.
-- Claves API de Binance u otros exchanges.
+- Claves API de Binance u otros exchanges (única excepción: claves de
+  una cuenta Binance DEMO, en los términos de D030).
 - Órdenes reales.
 - Apalancamiento, futuros y margen.
 - Promesas de rentabilidad.
@@ -116,3 +117,10 @@ Criterios de aceptación de la fase 2:
   el número de combinaciones probadas y la comparación con buy-and-hold;
 - un resultado out-of-sample peor que buy-and-hold se informa igual;
 - las pruebas pasan sin red.
+
+## Fase 3 — Integración con Binance Spot Demo Mode (D030, T021)
+Aprobada 2026-10-13 solo para lectura de una cuenta demo dedicada;
+el envío de órdenes demo requiere una aprobación posterior y separada.
+Objetivo: validar ejecución y reconciliación, no rentabilidad. T019
+sigue siendo la evaluación oficial; la estrategia queda congelada.
+Producción sigue fuera de alcance. Detalle y criterios: D030.
