@@ -347,3 +347,18 @@ D024), readme.md (fase 2).
 - Resultado: ver D024 (estrategia +4,48 %, buy-and-hold -23,51 %, en un
   holdout bajista; las 4 reglas de D023 se cumplen).
 - `.venv\Scripts\python -m pytest -q` -> 317 passed.
+
+## Registro T018 (revisión de Codex, transmitida por el usuario)
+- Codex: orden Git correcto (bc783bb -> 45afaa9 -> b962e9d), selección
+  aislada del holdout, veredicto conforme a D023, D024 prudente;
+  317 passed. Veredicto: "requiere cambios": la CLI permitía evaluar
+  otra combinación, esquema o capital en el holdout; faltaba probar la
+  regla de menor riesgo. Codex no pudo reproducir los hashes (Python no
+  arrancó en su entorno).
+- Aplicado por Claude Code: CLI del holdout bloqueada al protocolo
+  (FROZEN_CANDIDATE, esquema diario, capital 10 000; sin --scheme ni
+  --capital); pruebas de rechazo y de lower_risk -> 320 passed.
+- Reproducción por Claude Code con la CLI bloqueada (misma evaluación
+  congelada, salida en directorio temporal): los 5 SHA-256 coinciden con
+  D022 (be1dc696, a24b3cdf) y D024 (ba3781c0, 5cd321c2, 98b91cf2).
+- T018 queda abierta hasta que Codex confirme la corrección.

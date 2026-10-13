@@ -80,6 +80,9 @@ def test_verdict_applies_d023_rules(setup):
         base.strategy_metrics.sharpe > base.benchmark_metrics.sharpe)
     signs = {result.run(n).excess_return > 0 for n in ("bajo", "base", "alto")}
     assert verdict.robust_to_costs is (len(signs) == 1)
+    s, b = base.strategy_metrics, base.benchmark_metrics
+    assert verdict.lower_risk is (s.max_drawdown < b.max_drawdown
+                                  and s.volatility < b.volatility)
 
 
 def test_mismatched_candles_are_rejected(setup):
@@ -134,6 +137,23 @@ def test_cli_report_is_reproducible(tmp_path):
               "--open-holdout", "--out", str(tmp_path / name)])
     for file in ("holdout.md", "trades.csv", "equity.csv"):
         assert (tmp_path / "a" / file).read_bytes() == (tmp_path / "b" / file).read_bytes()
+
+
+def test_cli_rejects_other_registered_candidates(tmp_path, capsys):
+    # Revisión de Codex de T018: otra combinación de la rejilla tampoco.
+    data = tmp_path / "SYN-1d"
+    write_klines(data, wave(2465))
+    assert main(["--binance", str(data), "--candidate", "trend_filter:window=20",
+                 "--open-holdout", "--out", str(tmp_path / "o")]) == 2
+    assert "D023 solo permite evaluar trend_filter(window=50)" in capsys.readouterr().err
+    assert not (tmp_path / "o").exists()
+
+
+@pytest.mark.parametrize("option", [["--scheme", "hourly"], ["--capital", "5000"]])
+def test_cli_has_no_options_to_change_the_protocol(tmp_path, option):
+    with pytest.raises(SystemExit):
+        main(["--binance", str(tmp_path), "--candidate", "trend_filter:window=50",
+              "--open-holdout", *option])
 
 
 def test_cli_rejects_unregistered_candidate(tmp_path, capsys):

@@ -321,7 +321,9 @@ Qué se evalúa (una sola vez):
   2025-05-26 a 2026-09-30, con evaluate_segment (calentamiento con todo
   el historial previo y herencia de posición, D020). Capital 10 000,
   posición 100 %, tasa libre de riesgo 0.
-- Ninguna otra combinación se evalúa en el holdout.
+- Ninguna otra combinación se evalúa en el holdout. Tras la revisión
+  de Codex de T018, la CLI lo impone: solo acepta trend_filter(window=50),
+  esquema diario y capital 10 000 (no hay opciones para cambiarlos).
 
 Escenarios de costes (iguales para estrategia y buy-and-hold):
 - sin costes: comisión 0, slippage 0 (solo referencia).

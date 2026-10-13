@@ -4,6 +4,9 @@ Evalúa la combinación congelada (D022) y buy-and-hold en el holdout, con
 los escenarios de costes fijados de antemano, y aplica las reglas de
 interpretación de D023. No elige nada: solo mide.
 
+La CLI está bloqueada al protocolo: solo la combinación, el esquema y el
+capital congelados (revisión de Codex de T018).
+
 Uso (requiere confirmación explícita):
     python -m bottrading.holdout --binance data/BTCUSDT-1d \
         --candidate trend_filter:window=50 --open-holdout
@@ -42,6 +45,11 @@ SCENARIOS = (
     Scenario("alto", 0.002, 0.001),
 )
 BASE = "base"
+
+# D022/D023: lo único que la CLI acepta evaluar en el holdout final.
+FROZEN_CANDIDATE = Candidate("trend_filter", (("window", 50),))
+FROZEN_SCHEME = "daily"
+FROZEN_CAPITAL = 10_000.0
 
 
 @dataclass(frozen=True)
@@ -132,10 +140,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evaluación única del holdout final (D023). Solo simulación.",
     )
     parser.add_argument("--binance", type=Path, nargs="+", required=True, metavar="RUTA")
-    parser.add_argument("--scheme", choices=sorted(SCHEMES), default="daily")
     parser.add_argument("--candidate", required=True,
-                        help="combinación congelada, p. ej. trend_filter:window=50")
-    parser.add_argument("--capital", type=float, default=10_000.0)
+                        help=f"debe ser la combinación congelada en D022 "
+                             f"({FROZEN_CANDIDATE.strategy}:window=50)")
     parser.add_argument("--open-holdout", action="store_true",
                         help="confirmación explícita: el holdout solo debe abrirse una vez")
     parser.add_argument("--out", type=Path, default=None,
@@ -152,10 +159,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     try:
         candidate = parse_candidate(args.candidate)
+        if candidate != FROZEN_CANDIDATE:
+            raise ValueError(f"D023 solo permite evaluar {FROZEN_CANDIDATE.label} en el "
+                             f"holdout, no {candidate.label}")
         data_paths = expand_paths(args.binance)
         candles = load_binance_klines(data_paths)
-        plan = plan_splits([c.timestamp for c in candles], SCHEMES[args.scheme])
-        result = evaluate_holdout(candles, plan, candidate, args.capital)
+        plan = plan_splits([c.timestamp for c in candles], SCHEMES[FROZEN_SCHEME])
+        result = evaluate_holdout(candles, plan, candidate, FROZEN_CAPITAL)
         out_dir = args.out or Path("reports") / f"holdout_{data_paths[0].parent.name}"
         paths = write_holdout_report(out_dir, data_paths=data_paths, candles=candles,
                                      result=result)
