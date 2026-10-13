@@ -1,5 +1,5 @@
-# Paper trading automático (DECISIONS.md D028).
-# Descarga los días cerrados, simula y versiona paper/. Sin dinero ni órdenes.
+# Paper trading automatico (DECISIONS.md D028).
+# Descarga los dias cerrados, simula y versiona paper/. Sin dinero ni ordenes.
 # Solo hace commit de paper/ y push normal (nunca --force). Si algo falla,
 # no hace commit y deja el error en reports/automation/ (ignorado por Git).
 
@@ -19,7 +19,7 @@ function Write-Log([string]$message) {
 function Invoke-Step([string]$name, [scriptblock]$command) {
     $output = & $command 2>&1 | ForEach-Object { "$_" }
     $output | Out-File -Append -Encoding utf8 $log
-    if ($LASTEXITCODE -ne 0) { throw "$name terminó con código $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) { throw "$name termino con codigo $LASTEXITCODE" }
 }
 
 try {
@@ -39,7 +39,7 @@ try {
     }
     $day = (Select-String -Path "paper\ledger.state" -Pattern '^last_day=(.+)$').Matches[0].Groups[1].Value
     # Con rutas, git commit incluye SOLO paper/ aunque haya otros cambios preparados.
-    Invoke-Step "git commit" { git commit -m "paper: datos hasta $day (automático, D028)" -- paper/ }
+    Invoke-Step "git commit" { git commit -m "paper: datos hasta $day (automatico, D028)" -- paper/ }
     Invoke-Step "git push" { git push origin main }
     Write-Log "OK: datos hasta $day"
     exit 0
