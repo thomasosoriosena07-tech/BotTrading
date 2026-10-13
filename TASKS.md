@@ -64,8 +64,8 @@ holdout final, que se evalúa una sola vez (T017).
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
-  F0 (documento D030) y F1 (capa local) hechos y revisados. F2a hecho;
-  pendiente de revisión de Codex. Lectura de
+  F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
+  y revisados. Siguiente: F2b (sin red). Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
@@ -576,3 +576,6 @@ prueba llama a Binance; el transporte real no se ha ejecutado.
   las http.client.HTTPException (p. ej. IncompleteRead), que no son OSError.
   Ningún except de demo_client.py lanza excepciones. Pruebas: cuerpo
   ilegible en un 503 y lectura incompleta en un 200. 484 passed.
+- Revisión de Codex de 3e4c6c1 (transmitida por el usuario): F2a CERRADO;
+  se puede empezar F2b. 484 passed. Salvedad: el except Exception de
+  _read_quietly debe seguir limitado a la lectura del cuerpo del HTTPError.
