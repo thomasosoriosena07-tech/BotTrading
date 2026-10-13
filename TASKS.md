@@ -52,7 +52,7 @@ holdout final, que se evalúa una sola vez (T017).
   0,1 % es un supuesto configurable, no el coste real garantizado);
   limitaciones: supervivencia (solo símbolos existentes hoy), cambios
   de régimen. Resultados desfavorables se publican igual.
-- [ ] T018 — Revisión independiente de la fase 2 con Codex.
+- [x] T018 — Revisión independiente de la fase 2 con Codex.
 - [ ] T019 — Paper trading con datos públicos en tiempo real.
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
   órdenes; las pruebas siguen sin red.
@@ -62,8 +62,9 @@ holdout final, que se evalúa una sola vez (T017).
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al proyecto.
 - Indicar archivos relevantes y criterios de aceptación.
-- MVP completado (T001-T012). Fase 2 aprobada por el usuario; plan
-  revisado por Codex ("listo para empezar T013") y reordenado.
+- MVP completado (T001-T012). Fase 2 completada (T013-T018); T019
+  bloqueada hasta aprobar el acceso a red. Siguiente fase: pendiente de
+  decisión del usuario.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -361,4 +362,9 @@ D024), readme.md (fase 2).
 - Reproducción por Claude Code con la CLI bloqueada (misma evaluación
   congelada, salida en directorio temporal): los 5 SHA-256 coinciden con
   D022 (be1dc696, a24b3cdf) y D024 (ba3781c0, 5cd321c2, 98b91cf2).
-- T018 queda abierta hasta que Codex confirme la corrección.
+- Confirmación de Codex (transmitida por el usuario): correcciones
+  aplicadas y probadas; 320 passed; "sí, se puede dar por cerrada la
+  fase 2". Limitación declarada por Codex: no pudo reproducir los hashes
+  en su entorno (no arrancó .venv\Scripts\python.exe); la
+  reproducción de los 5 SHA-256 la hizo solo Claude Code.
+- Fase 2 (T013-T018) cerrada. T019 sigue bloqueada (D017).
