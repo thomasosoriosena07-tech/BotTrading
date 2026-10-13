@@ -5,7 +5,7 @@
 - [x] T002 — Crear estructura mínima del paquete Python.
 - [x] T003 — Configurar dependencias y entorno de desarrollo.
 - [x] T004 — Implementar carga y validación de CSV.
-- [ ] T005 — Implementar señales de medias móviles.
+- [x] T005 — Implementar señales de medias móviles.
 - [ ] T006 — Implementar motor de backtesting.
 - [ ] T007 — Añadir comisiones, slippage y límites de posición.
 - [ ] T008 — Calcular métricas y comparación buy-and-hold.
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T005.
+- El siguiente paso prioritario es T006.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -75,3 +75,14 @@ Archivos: src/bottrading/data.py, tests/test_data.py, DECISIONS.md (D011).
 - Segunda revisión Codex: "listo con cambios menores". Aplicado: las
   columnas extra se registran en el log (INFO); D011 documenta el
   límite de epoch para datos anteriores a 1973. -> 38 passed.
+
+## Registro T005 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/strategy.py, tests/test_strategy.py, DECISIONS.md (D012).
+- API: crossover_signals(closes, fast, slow) -> list[Signal];
+  simple_moving_average(); validate_windows(). Signal: BUY/SELL/HOLD.
+- Prueba de no look-ahead: las señales de cada prefijo de la serie
+  coinciden con las de la serie completa.
+- Corregido durante la tarea: la primera versión daba una señal falsa
+  cuando la rápida tocaba la lenta y volvía al mismo lado.
+- `.venv\Scripts\python -m pytest -q` -> 62 passed.
+- Ejecución en la vela siguiente: pendiente de T006 (no implementada).

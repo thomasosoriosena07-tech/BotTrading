@@ -84,8 +84,25 @@ si T005-T008 lo justifican.
 Limitaciones: no se detectan huecos entre velas ni velas incompletas;
 el CSV debe contener solo velas cerradas.
 
+## D012 — Señales de cruce y momento de ejecución
+Estado: Aprobada
+
+- Medias móviles simples sobre el cierre; `1 <= fast < slow`, enteros.
+- La señal de la vela i usa solo cierres hasta i (se conoce al cierre).
+- BUY/SELL solo cuando la rápida cambia de lado respecto a la lenta.
+  Los empates no son cruces: tocar y volver al mismo lado no genera
+  señal. Si la rápida ya está por encima al terminar el calentamiento,
+  no hay BUY hasta un cruce real.
+- Ejecución (T006): al precio de apertura de la vela i + 1. Una señal
+  en la última vela no se ejecuta.
+- Slippage (T007): siempre adverso. Compra = apertura × (1 + slippage);
+  venta = apertura × (1 − slippage).
+- Empate al final del calentamiento: la primera divergencia da BUY o
+  SELL según el lado (regla simétrica).
+- Media con math.fsum sobre la ventana: O(n·ventana), suficiente para
+  el MVP; optimizar solo si un dataset real lo exige.
+
 ## Pendientes de decisión
-- Precio de ejecución: apertura de la vela siguiente + slippage.
 - ¿Detectar huecos entre velas (intervalo irregular)?
 - Factor de anualización del Sharpe.
 - Unidades fraccionarias permitidas o no.
