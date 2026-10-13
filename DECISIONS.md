@@ -60,10 +60,32 @@ Estado: Aprobada
 (`pip install -e ".[dev]"`). El uso de pandas se decidirá en T004,
 cuando la carga de CSV lo justifique o no.
 
+## D011 — Carga de CSV con biblioteca estándar
+Estado: Aprobada
+
+T004 usa solo csv, datetime y math; sin pandas. Se reconsiderará
+si T005-T008 lo justifican.
+- timestamp: ISO 8601 con zona horaria (se convierte a UTC) o epoch
+  numérico en ms por defecto (`epoch_unit="s"` para segundos).
+- Fechas sin zona horaria: se rechazan; nunca se asume UTC.
+- Filas vacías, no numéricas, no finitas, precios <= 0, volumen < 0,
+  high/low incoherentes o timestamps duplicados: DataValidationError
+  con número de línea. No se corrige ni descarta nada en silencio.
+- Filas desordenadas: se ordenan y se registra un aviso.
+- Filas con más o menos campos que la cabecera, columnas repetidas y
+  líneas vacías entre datos: error. Líneas vacías al final: se ignoran.
+- Unidad del epoch: valores < 1e11 con unidad ms (o >= 1e11 con s) se
+  rechazan por unidad probablemente equivocada.
+- Se acepta UTF-8 con BOM.
+- Columnas extra de la cabecera (no OHLCV): se ignoran a propósito y
+  se registran en el log con nivel INFO.
+- Datos anteriores a 1973-03-03: usar timestamps ISO 8601; el epoch
+  en ms no los admite por la regla de unidad anterior.
+Limitaciones: no se detectan huecos entre velas ni velas incompletas;
+el CSV debe contener solo velas cerradas.
+
 ## Pendientes de decisión
-- ¿pandas para T004 o solo biblioteca estándar?
 - Precio de ejecución: apertura de la vela siguiente + slippage.
-- Detección de velas incompletas en CSV.
-- Fechas sin zona horaria: rechazar o asumir UTC.
+- ¿Detectar huecos entre velas (intervalo irregular)?
 - Factor de anualización del Sharpe.
 - Unidades fraccionarias permitidas o no.

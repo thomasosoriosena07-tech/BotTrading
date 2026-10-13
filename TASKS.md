@@ -4,7 +4,7 @@
 - [x] T001 — Inspeccionar el repositorio y el entorno.
 - [x] T002 — Crear estructura mínima del paquete Python.
 - [x] T003 — Configurar dependencias y entorno de desarrollo.
-- [ ] T004 — Implementar carga y validación de CSV.
+- [x] T004 — Implementar carga y validación de CSV.
 - [ ] T005 — Implementar señales de medias móviles.
 - [ ] T006 — Implementar motor de backtesting.
 - [ ] T007 — Añadir comisiones, slippage y límites de posición.
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T004.
+- El siguiente paso prioritario es T005.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -57,3 +57,21 @@ Comandos y resultados:
 - .gitignore: añadido *.egg-info/, build/, dist/; corregido
   "**pycache**/" -> "__pycache__/". Verificado con git status --ignored.
 - Riesgo abierto: .venv dentro de OneDrive (sincronización).
+
+## Registro T004 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/data.py, tests/test_data.py, DECISIONS.md (D011).
+- API: load_ohlcv_csv(path, epoch_unit="ms") -> list[Candle];
+  parse_timestamp(); DataValidationError (subclase de ValueError).
+- Sin dependencias nuevas (biblioteca estándar).
+- `.venv\Scripts\python -m pytest -q` -> 28 passed (primera versión).
+- Revisión Codex: "requiere cambios". Corregido: campos sobrantes
+  descartados en silencio, BOM UTF-8, líneas vacías entre datos,
+  epoch con unidad equivocada aceptado, duplicados sin número de
+  línea. Lectura cambiada de DictReader a csv.reader.
+- Tras correcciones: `.venv\Scripts\python -m pytest -q` -> 38 passed.
+- Pruebas con CSV sintéticos en tmp_path; sin descargas.
+- No cubierto (documentado en D011): huecos entre velas y velas
+  incompletas.
+- Segunda revisión Codex: "listo con cambios menores". Aplicado: las
+  columnas extra se registran en el log (INFO); D011 documenta el
+  límite de epoch para datos anteriores a 1973. -> 38 passed.
