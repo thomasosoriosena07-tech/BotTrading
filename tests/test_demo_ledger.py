@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from pathlib import Path
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -424,6 +425,47 @@ def test_default_location_is_in_the_user_profile(monkeypatch, private_env):
     monkeypatch.delenv("USERPROFILE")
     with pytest.raises(StopTheDay, match="USERPROFILE"):
         default_ledger_path()
+
+
+def test_onedrive_from_registry_or_folder_name_is_refused_without_env_vars(private_env):
+    # Revisión de Codex: perfil sincronizado sin variables OneDrive* que lo indiquen.
+    from bottrading.demo_ledger import check_private_location
+    synced = private_env / "Sincronizado"
+    with pytest.raises(StopTheDay, match="no permitida"):
+        check_private_location(synced / ".bottrading" / "orders.csv", lambda: [synced])
+    with pytest.raises(StopTheDay, match="carpeta OneDrive"):
+        check_private_location(private_env / "OneDrive - Empresa" / "x" / "orders.csv", lambda: [])
+    with pytest.raises(StopTheDay, match="carpeta OneDrive"):
+        check_private_location(private_env / "onedrive-copia" / "orders.csv", lambda: [])
+    check_private_location(private_env / "perfil" / ".bottrading" / "orders.csv", lambda: [])
+
+
+def test_relative_paths_case_and_links_are_resolved_first(monkeypatch, private_env):
+    from bottrading.demo_ledger import check_private_location
+    synced = private_env / "Sincronizado"
+    (synced / "dentro").mkdir(parents=True)
+    monkeypatch.chdir(synced)
+    with pytest.raises(StopTheDay, match="no permitida"):  # ruta relativa
+        check_private_location(Path("dentro") / "orders.csv", lambda: [synced])
+    upper = Path(str(synced).upper()) / "dentro" / "orders.csv"
+    with pytest.raises(StopTheDay, match="no permitida"):  # mayúsculas (Windows)
+        check_private_location(upper, lambda: [synced])
+    link = private_env / "enlace"
+    try:
+        link.symlink_to(synced / "dentro", target_is_directory=True)
+    except OSError:
+        if sys.platform != "win32":
+            pytest.skip("no se pudo crear el enlace")
+        # Unión de directorios: no requiere modo desarrollador ni administrador.
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(synced / "dentro")],
+                       check=True, capture_output=True)
+    with pytest.raises(StopTheDay, match="no permitida"):  # enlace hacia OneDrive
+        check_private_location(link / "orders.csv", lambda: [synced])
+
+
+def test_real_registry_reader_returns_paths():
+    from bottrading.demo_ledger import onedrive_registry_roots
+    assert all(isinstance(root, Path) for root in onedrive_registry_roots())
 
 
 @pytest.mark.parametrize("inside", ["OneDrive", "LOCALAPPDATA", "APPDATA", "repo"])

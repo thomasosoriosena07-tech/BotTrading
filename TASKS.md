@@ -747,3 +747,14 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   (sin virtualización); check real posterior: reconciliación OK. La copia
   antigua en la carpeta de paquete del Python de la Store queda sin uso.
   575 passed.
+- Revisión de Codex de 95e54cd (transmitida por el usuario): la guarda de
+  OneDrive dependía de variables de entorno. Corregido: OneDrive se detecta
+  además por las carpetas sincronizadas declaradas en el registro de Windows
+  (HKCU\Software\Microsoft\OneDrive\Accounts\*\UserFolder; en este equipo
+  C:\Users\thoma\OneDrive) y, como respaldo, por cualquier carpeta de la
+  ruta cuyo nombre empiece por "OneDrive" (sin distinguir mayúsculas).
+  Pruebas nuevas: perfil sincronizado sin variables, carpeta "OneDrive -
+  Empresa", ruta relativa, mayúsculas y enlace (unión de directorios con
+  mklink /J, sin permisos especiales). La ubicación real sigue siendo válida.
+  No queda ninguna instancia antigua escribiendo en la ubicación anterior
+  (no hay tareas demo programadas). 578 passed.

@@ -67,15 +67,55 @@ def default_ledger_path() -> Path:
     return path
 
 
-def check_private_location(path: Path) -> None:
-    """Se niega a usar una carpeta privada dentro del repositorio, OneDrive o AppData."""
+def onedrive_registry_roots() -> list[Path]:
+    """Carpetas que OneDrive sincroniza de verdad, según el registro de Windows
+    (HKCU\\Software\\Microsoft\\OneDrive\\Accounts\\*\\UserFolder)."""
+    if sys.platform != "win32":
+        return []
+    import winreg
+    roots = []
+    try:
+        accounts = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\OneDrive\Accounts")
+    except OSError:
+        return []  # OneDrive no está configurado para este usuario
+    with accounts:
+        index = 0
+        while True:
+            try:
+                name = winreg.EnumKey(accounts, index)
+            except OSError:
+                break
+            index += 1
+            try:
+                with winreg.OpenKey(accounts, name) as account:
+                    folder, _ = winreg.QueryValueEx(account, "UserFolder")
+            except OSError:
+                continue
+            if isinstance(folder, str) and folder:
+                roots.append(Path(folder))
+    return roots
+
+
+def check_private_location(path: Path,
+                           registry_roots: Callable[[], list[Path]] = onedrive_registry_roots
+                           ) -> None:
+    """Se niega a usar una carpeta privada dentro del repositorio, OneDrive o AppData.
+
+    OneDrive se detecta por tres vías (revisión de Codex): variables de
+    entorno, carpetas sincronizadas declaradas en el registro y, como
+    respaldo, cualquier carpeta de la ruta cuyo nombre empiece por
+    "OneDrive". La ruta se resuelve antes (enlaces, relativas, mayúsculas).
+    """
     resolved = path.resolve()
     roots = [REPO_ROOT] + [Path(os.environ[name]) for name in FORBIDDEN_ROOT_VARIABLES
-                           if os.environ.get(name)]
+                           if os.environ.get(name)] + list(registry_roots())
     for root in roots:
         if resolved.is_relative_to(root.resolve()):
             raise StopTheDay(f"ubicación privada no permitida (dentro de {root}): "
                              "debe estar fuera del repositorio, OneDrive y AppData")
+    if any(part.casefold().startswith("onedrive") for part in resolved.parts):
+        raise StopTheDay(f"ubicación privada no permitida (carpeta OneDrive en {resolved}): "
+                         "debe estar fuera del repositorio, OneDrive y AppData")
 
 
 class LedgerIntegrityError(RuntimeError):
