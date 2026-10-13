@@ -16,7 +16,9 @@ from bottrading.download import (
     download_month,
     fetch_url,
     is_allowed_url,
+    day_range,
     kline_url,
+    last_complete_day,
     last_complete_month,
     main,
     month_range,
@@ -254,3 +256,72 @@ def test_fetch_url_maps_404_to_none_and_other_errors(monkeypatch):
 def test_fetch_url_rejects_urls_outside_base():
     with pytest.raises(DownloadError, match="URL no permitida"):
         fetch_url("https://data.binance.vision/otra/cosa.zip")
+
+
+# --- archivos diarios (D027) ------------------------------------------------------------
+
+
+
+
+class FakeDailyServer:
+    def __init__(self, days):
+        self.files = {}
+        for day in days:
+            name = f"BTCUSDT-1d-{day}.zip"
+            content = f"zip {day}".encode()
+            url = kline_url("BTCUSDT", "1d", day, daily=True)
+            self.files[url] = content
+            self.files[url + ".CHECKSUM"] = (
+                f"{hashlib.sha256(content).hexdigest()}  {name}\n".encode())
+
+    def __call__(self, url):
+        return self.files.get(url)
+
+
+def test_day_range_and_last_complete_day():
+    assert day_range("2026-09-30", "2026-10-02") == ["2026-09-30", "2026-10-01", "2026-10-02"]
+    assert last_complete_day(NOW) == "2026-10-12"
+    with pytest.raises(ValueError, match="día no válido"):
+        day_range("2026-10", "2026-10-02")
+
+
+def test_daily_url_uses_the_daily_path_on_the_same_host():
+    url = kline_url("BTCUSDT", "1d", "2026-10-01", daily=True)
+    assert url == ("https://data.binance.vision/data/spot/daily/klines/"
+                   "BTCUSDT/1d/BTCUSDT-1d-2026-10-01.zip")
+    assert is_allowed_url(url)
+
+
+def test_fetch_url_accepts_daily_prefix(monkeypatch):
+    url = kline_url("BTCUSDT", "1d", "2026-10-01", daily=True)
+    monkeypatch.setattr(download, "_OPENER", FakeOpener(FakeResponse(url)))
+    assert fetch_url(url) == b"datos"
+
+
+def test_cli_daily_downloads_closed_days(tmp_path, capsys):
+    server = FakeDailyServer(["2026-10-01", "2026-10-02"])
+    code = main(["--symbol", "BTCUSDT", "--interval", "1d", "--daily",
+                 "--start", "2026-10-01", "--end", "2026-10-03", "--out", str(tmp_path)],
+                fetch=server, pause=lambda s: None, now=NOW)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "2026-10-03: no disponible" in out and "descargado: 2" in out
+    assert sorted(p.name for p in tmp_path.glob("*.zip")) == [
+        "BTCUSDT-1d-2026-10-01.zip", "BTCUSDT-1d-2026-10-02.zip"]
+
+
+def test_cli_daily_rejects_days_not_closed(tmp_path, capsys):
+    code = main(["--symbol", "BTCUSDT", "--interval", "1d", "--daily",
+                 "--start", "2026-10-10", "--end", "2026-10-13", "--out", str(tmp_path)],
+                fetch=FakeDailyServer([]), pause=lambda s: None, now=NOW)
+    assert code == 2
+    assert "no es un día cerrado" in capsys.readouterr().err
+
+
+def test_cli_daily_default_folder(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    server = FakeDailyServer(["2026-10-01"])
+    assert main(["--symbol", "BTCUSDT", "--interval", "1d", "--daily",
+                 "--start", "2026-10-01", "--end", "2026-10-01"],
+                fetch=server, pause=lambda s: None, now=NOW) == 0
+    assert (tmp_path / "data" / "BTCUSDT-1d-daily" / "BTCUSDT-1d-2026-10-01.zip").exists()

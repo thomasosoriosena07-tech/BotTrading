@@ -29,6 +29,7 @@ from bottrading.metrics import Comparison, Metrics, compute_metrics, irregular_g
 if TYPE_CHECKING:  # solo tipos: estos módulos importan report
     from bottrading.crossasset import AssetResult
     from bottrading.holdout import HoldoutResult
+    from bottrading.paper import PaperAsset, PaperState
     from bottrading.walkforward import SelectionResult, WindowScore
 
 DISCLAIMER = (
@@ -476,6 +477,96 @@ def render_crossasset_markdown(
         "",
     ]
     return "\n".join(lines)
+
+
+def write_paper_report(out_dir: Path, *, state: PaperState) -> dict[str, Path]:
+    """paper/report.md y paper/equity.csv (D027). El diario lo escribe paper.py."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {"report": out_dir / "report.md", "equity": out_dir / "equity.csv"}
+    paths["report"].write_text(render_paper_markdown(state), encoding="utf-8", newline="\n")
+    with paths["equity"].open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(["date", "symbol", "strategy_equity", "buy_and_hold_equity"])
+        rows = []
+        for asset in state.assets:
+            for when, ours, theirs in zip(asset.strategy.timestamps, asset.strategy.equity,
+                                          asset.benchmark.equity):
+                rows.append([when.date().isoformat(), asset.symbol, repr(ours), repr(theirs)])
+        writer.writerows(sorted(rows, key=lambda row: (row[0], row[1])))
+    return paths
+
+
+def render_paper_markdown(state: PaperState) -> str:
+    pending = state.pending
+    days = (state.last_day - state.forward_start).days + 1
+    lines = [
+        "# Paper trading: `trend_filter(window=50)` desde 2026-10-01",
+        "",
+        "**Simulación sin dinero.** No se envían órdenes ni se usan cuentas o "
+        "claves. Los resultados simulados no garantizan rentabilidades futuras.",
+        "",
+        "Protocolo fijado antes de empezar (DECISIONS.md D027): estrategia "
+        "congelada, costes base, capital 10 000 por activo, velas diarias "
+        "cerradas, sin cambios durante la prueba.",
+        "",
+        f"- Datos hasta: **{state.last_day.isoformat()}** ({days} días simulados)",
+        "- Próximo punto de control: "
+        + (f"{pending[0][0]} el {pending[0][1].isoformat()} "
+           f"(faltan {(pending[0][1] - state.last_day).days} días)" if pending
+           else "ninguno (prueba completada)"),
+        "",
+        "## Situación actual",
+        "",
+        "| Activo | Posición | Retorno estrategia | Retorno buy-and-hold | Drawdown "
+        "estrategia | Drawdown buy-and-hold | Operaciones |",
+        "|---|---|---:|---:|---:|---:|---:|",
+        *[_paper_row(asset) for asset in state.assets],
+        "",
+        "Retornos netos de costes, con la posición abierta valorada a su "
+        "liquidación. Con pocos días, las métricas anualizadas y el Sharpe "
+        "no están disponibles o no son representativos.",
+        "",
+    ]
+    for checkpoint in state.checkpoints:
+        lines += [
+            f"## Punto de control: {checkpoint.label}, {checkpoint.day.isoformat()}",
+            "",
+            "| Activo | ¿Gana más? | ¿Mejor Sharpe? | ¿Menor riesgo? | ¿Menor drawdown? |",
+            "|---|---|---|---|---|",
+            *[_checkpoint_row(asset) for asset in checkpoint.assets],
+            "",
+            "Reglas de D027 (las de D023 más la protección), aplicadas sin "
+            "cambios. Un solo periodo no demuestra una ventaja estadística.",
+            "",
+        ]
+    lines += [
+        "## Diario",
+        "",
+        "Las operaciones simuladas están en `ledger.csv` (solo se añaden "
+        "filas; el historial de Git sirve de sello de tiempo) y la curva de "
+        "capital diaria en `equity.csv`.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _paper_row(asset: PaperAsset) -> str:
+    s, b = asset.strategy_metrics, asset.benchmark_metrics
+    position = "dentro" if asset.strategy.final_quantity > 0 else "fuera"
+    return (f"| {asset.symbol} | {position} | {_pct(s.total_return)} | "
+            f"{_pct(b.total_return)} | {_pct(s.max_drawdown)} | {_pct(b.max_drawdown)} | "
+            f"{s.num_trades} |")
+
+
+def _checkpoint_row(asset: PaperAsset) -> str:
+    s, b = asset.strategy_metrics, asset.benchmark_metrics
+    sharpe = None if s.sharpe is None or b.sharpe is None else s.sharpe > b.sharpe
+    lower_risk = (None if s.volatility is None or b.volatility is None
+                  else s.max_drawdown < b.max_drawdown and s.volatility < b.volatility)
+    return (f"| {asset.symbol} | {_yes_no(s.total_return > b.total_return)} | "
+            f"{_yes_no_nd(sharpe)} | {_yes_no_nd(lower_risk)} | "
+            f"{_yes_no(s.max_drawdown < b.max_drawdown)} |")
 
 
 def _fingerprints(paths: Sequence[Path]) -> list[tuple[str, int, str]]:

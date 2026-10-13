@@ -1,12 +1,15 @@
 """Descarga de klines históricos PÚBLICOS de data.binance.vision (D019).
 
 Único módulo del proyecto con acceso a red. Solo descarga archivos
-públicos mensuales de spot: sin cuenta, sin claves API, sin órdenes.
-Cada ZIP se verifica con su .CHECKSUM antes de guardarse.
+públicos de spot, mensuales o diarios (D027): sin cuenta, sin claves
+API, sin órdenes. Cada ZIP se verifica con su .CHECKSUM antes de
+guardarse.
 
 Uso:
     python -m bottrading.download --symbol BTCUSDT --interval 1d \
         --start 2020-01 --end 2026-09
+    python -m bottrading.download --symbol BTCUSDT --interval 1d \
+        --daily --start 2026-10-01
 """
 
 import argparse
@@ -18,10 +21,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Sequence
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 BASE_URL = "https://data.binance.vision/data/spot/monthly/klines"
+DAILY_BASE_URL = "https://data.binance.vision/data/spot/daily/klines"  # D027
 ALLOWED_HOST = "data.binance.vision"
 INTERVALS = ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d")
 SYMBOL_PATTERN = re.compile(r"[A-Z0-9]{2,20}")
@@ -55,26 +59,48 @@ def last_complete_month(now: datetime | None = None) -> str:
     return f"{year:04d}-{month:02d}"
 
 
-def kline_file_name(symbol: str, interval: str, month: str) -> str:
-    return f"{symbol}-{interval}-{month}.zip"
+def day_range(start: str, end: str) -> list[str]:
+    """Días 'YYYY-MM-DD' de start a end, ambos incluidos."""
+    first, last = _parse_day(start), _parse_day(end)
+    if first > last:
+        raise ValueError(f"start ({start}) es posterior a end ({end})")
+    return [(first + timedelta(days=i)).isoformat() for i in range((last - first).days + 1)]
 
 
-def kline_url(symbol: str, interval: str, month: str) -> str:
-    return f"{BASE_URL}/{symbol}/{interval}/{kline_file_name(symbol, interval, month)}"
+def last_complete_day(now: datetime | None = None) -> str:
+    """Ayer en UTC: el último día con la vela diaria cerrada."""
+    now = now or datetime.now(timezone.utc)
+    return (now.date() - timedelta(days=1)).isoformat()
+
+
+def kline_file_name(symbol: str, interval: str, period: str) -> str:
+    return f"{symbol}-{interval}-{period}.zip"
+
+
+def kline_url(symbol: str, interval: str, period: str, daily: bool = False) -> str:
+    base = DAILY_BASE_URL if daily else BASE_URL
+    return f"{base}/{symbol}/{interval}/{kline_file_name(symbol, interval, period)}"
 
 
 def download_month(
     symbol: str, interval: str, month: str, out_dir: Path, fetch: Fetch
 ) -> str:
     """Devuelve 'descargado', 'ya presente' o 'no disponible'."""
-    zip_path = out_dir / kline_file_name(symbol, interval, month)
+    return download_period(symbol, interval, month, out_dir, fetch, daily=False)
+
+
+def download_period(
+    symbol: str, interval: str, period: str, out_dir: Path, fetch: Fetch, daily: bool
+) -> str:
+    """Un archivo mensual ('YYYY-MM') o diario ('YYYY-MM-DD')."""
+    zip_path = out_dir / kline_file_name(symbol, interval, period)
     checksum_path = zip_path.with_name(zip_path.name + ".CHECKSUM")
     if zip_path.exists() and checksum_path.exists():
         expected = _checksum_value(checksum_path.read_bytes(), zip_path.name)
         if hashlib.sha256(zip_path.read_bytes()).hexdigest() == expected:
             return "ya presente"
 
-    url = kline_url(symbol, interval, month)
+    url = kline_url(symbol, interval, period, daily)
     checksum = fetch(url + ".CHECKSUM")
     if checksum is None:
         return "no disponible"
@@ -113,7 +139,8 @@ _OPENER = urllib.request.build_opener(SameHostRedirectHandler)
 
 def fetch_url(url: str) -> bytes | None:
     """GET HTTPS a data.binance.vision. None si el archivo no existe (404)."""
-    if not url.startswith(BASE_URL + "/") or not is_allowed_url(url):
+    allowed_prefix = url.startswith(BASE_URL + "/") or url.startswith(DAILY_BASE_URL + "/")
+    if not allowed_prefix or not is_allowed_url(url):
         raise DownloadError(f"URL no permitida: {url}")
     request = urllib.request.Request(url, headers={"User-Agent": "bottrading-educativo"})
     try:
@@ -132,15 +159,18 @@ def fetch_url(url: str) -> bytes | None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m bottrading.download",
-        description="Descarga klines mensuales públicos de data.binance.vision.",
+        description="Descarga klines públicos (mensuales o diarios) de data.binance.vision.",
     )
     parser.add_argument("--symbol", required=True, help="p. ej. BTCUSDT")
     parser.add_argument("--interval", required=True, choices=INTERVALS)
-    parser.add_argument("--start", required=True, help="primer mes, YYYY-MM")
+    parser.add_argument("--daily", action="store_true",
+                        help="archivos diarios; --start/--end en formato YYYY-MM-DD")
+    parser.add_argument("--start", required=True, help="primer mes YYYY-MM (o día con --daily)")
     parser.add_argument("--end", default=None,
-                        help="último mes, YYYY-MM (por defecto el último mes cerrado)")
+                        help="último mes o día; por defecto el último cerrado")
     parser.add_argument("--out", type=Path, default=None,
-                        help="carpeta destino (por defecto data/<SYMBOL>-<interval>)")
+                        help="carpeta destino (por defecto data/<SYMBOL>-<interval>, "
+                             "o data/<SYMBOL>-<interval>-daily con --daily)")
     return parser
 
 
@@ -154,20 +184,30 @@ def main(
     try:
         if not SYMBOL_PATTERN.fullmatch(args.symbol):
             raise ValueError(f"símbolo no válido: {args.symbol!r} (p. ej. BTCUSDT)")
-        latest = last_complete_month(now)
-        end = args.end or latest
-        if _parse_month(end) > _parse_month(latest):
-            raise ValueError(f"{end} no es un mes cerrado (último: {latest})")
-        months = month_range(args.start, end)
-        out_dir = args.out or Path("data") / f"{args.symbol}-{args.interval}"
+        if args.daily:
+            latest = last_complete_day(now)
+            end = args.end or latest
+            if _parse_day(end) > _parse_day(latest):
+                raise ValueError(f"{end} no es un día cerrado (último: {latest})")
+            periods = day_range(args.start, end)
+            suffix = "-daily"
+        else:
+            latest = last_complete_month(now)
+            end = args.end or latest
+            if _parse_month(end) > _parse_month(latest):
+                raise ValueError(f"{end} no es un mes cerrado (último: {latest})")
+            periods = month_range(args.start, end)
+            suffix = ""
+        out_dir = args.out or Path("data") / f"{args.symbol}-{args.interval}{suffix}"
 
         statuses: dict[str, list[str]] = {}
-        for i, month in enumerate(months):
+        for i, period in enumerate(periods):
             if i:
                 pause(PAUSE_SECONDS)
-            status = download_month(args.symbol, args.interval, month, out_dir, fetch)
-            statuses.setdefault(status, []).append(month)
-            print(f"{month}: {status}")
+            status = download_period(args.symbol, args.interval, period, out_dir, fetch,
+                                     args.daily)
+            statuses.setdefault(status, []).append(period)
+            print(f"{period}: {status}")
     except (ValueError, DownloadError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -176,7 +216,7 @@ def main(
     for status, done in statuses.items():
         print(f"{status}: {len(done)}")
     if "no disponible" in statuses:
-        print("Meses no disponibles (p. ej. antes del listado del símbolo): "
+        print("No disponibles (p. ej. antes del listado o aún no publicados): "
               + ", ".join(statuses["no disponible"]))
     return 0
 
@@ -186,6 +226,15 @@ def _parse_month(text: str) -> tuple[int, int]:
     if not match or not 1 <= int(match.group(2)) <= 12:
         raise ValueError(f"mes no válido: {text!r} (formato YYYY-MM)")
     return int(match.group(1)), int(match.group(2))
+
+
+def _parse_day(text: str) -> date:
+    try:
+        if len(text) != 10:
+            raise ValueError
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"día no válido: {text!r} (formato YYYY-MM-DD)") from exc
 
 
 def _checksum_value(content: bytes, file_name: str) -> str:
