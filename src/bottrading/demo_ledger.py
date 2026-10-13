@@ -6,7 +6,7 @@ solo tras la aprobación (b) de D030. Las pruebas usan un servidor
 simulado con la semántica documentada de Binance.
 
 Registro (D030, punto 5): CSV de eventos solo de añadir, FUERA del
-repositorio (%LOCALAPPDATA%\\BotTrading\\demo\\orders.csv), con un ancla
+repositorio (%USERPROFILE%\\.bottrading\\demo\\orders.csv), con un ancla
 (filas y SHA-256). Cada transición se escribe de forma atómica ANTES del
 paso de red correspondiente:
 
@@ -49,12 +49,33 @@ COLUMNS = ["seq", "at", "client_order_id", "event", "symbol", "side", "signal_da
 EVENTS = ("INTENT", "SENT", "ACK", "UNKNOWN", "FINAL", "ADJUDICATED_NOT_SENT")
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+# Carpetas donde el estado privado NO puede vivir: el repositorio (se publica),
+# OneDrive (se sincroniza a la nube) y AppData (el Python de Microsoft Store
+# virtualiza esas escrituras y las borra al desinstalarse o cambiar de versión).
+FORBIDDEN_ROOT_VARIABLES = ("OneDrive", "OneDriveConsumer", "OneDriveCommercial",
+                            "LOCALAPPDATA", "APPDATA")
+
+
 def default_ledger_path() -> Path:
-    """%LOCALAPPDATA%\\BotTrading\\demo\\orders.csv (fuera del repositorio, D030)."""
-    base = os.environ.get("LOCALAPPDATA")
-    if not base:
-        raise StopTheDay("LOCALAPPDATA no definida: no hay ubicación privada para el registro")
-    return Path(base) / "BotTrading" / "demo" / "orders.csv"
+    """%USERPROFILE%\\.bottrading\\demo\\orders.csv (D030): local, estable y privado."""
+    home = os.environ.get("USERPROFILE") or os.environ.get("HOME")
+    if not home:
+        raise StopTheDay("USERPROFILE no definida: no hay ubicación privada para el registro")
+    path = Path(home) / ".bottrading" / "demo" / "orders.csv"
+    check_private_location(path)
+    return path
+
+
+def check_private_location(path: Path) -> None:
+    """Se niega a usar una carpeta privada dentro del repositorio, OneDrive o AppData."""
+    resolved = path.resolve()
+    roots = [REPO_ROOT] + [Path(os.environ[name]) for name in FORBIDDEN_ROOT_VARIABLES
+                           if os.environ.get(name)]
+    for root in roots:
+        if resolved.is_relative_to(root.resolve()):
+            raise StopTheDay(f"ubicación privada no permitida (dentro de {root}): "
+                             "debe estar fuera del repositorio, OneDrive y AppData")
 
 
 class LedgerIntegrityError(RuntimeError):

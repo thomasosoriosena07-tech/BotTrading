@@ -113,7 +113,7 @@ Fase experimental: valida la ejecución, no la rentabilidad. No envía
 4. Línea base (pide escribir INICIALIZAR): `python -m bottrading.demo_client init`
 5. Reconciliación: `python -m bottrading.demo_client reconcile`
 
-El estado privado vive en `%LOCALAPPDATA%\BotTrading\demo\`, fuera del
+El estado privado vive en `%USERPROFILE%\.bottrading\demo\`, fuera del
 repositorio. Crear el archivo `STOP` en esa carpeta activa el kill switch.
 
 ## Arquitectura

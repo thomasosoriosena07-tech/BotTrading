@@ -409,9 +409,29 @@ def test_crash_between_ledger_and_anchor_writes_fails_closed(book):
         OrderLedger(book.path, CLOCK)
 
 
-def test_default_location_is_outside_the_repository(monkeypatch, tmp_path):
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    assert default_ledger_path() == tmp_path / "BotTrading" / "demo" / "orders.csv"
-    monkeypatch.delenv("LOCALAPPDATA")
-    with pytest.raises(StopTheDay):
+@pytest.fixture
+def private_env(monkeypatch, tmp_path):
+    for name in ("LOCALAPPDATA", "APPDATA", "OneDrive"):
+        monkeypatch.setenv(name, str(tmp_path / name))
+    for name in ("OneDriveConsumer", "OneDriveCommercial", "HOME"):
+        monkeypatch.delenv(name, raising=False)
+    return tmp_path
+
+
+def test_default_location_is_in_the_user_profile(monkeypatch, private_env):
+    monkeypatch.setenv("USERPROFILE", str(private_env / "perfil"))
+    assert default_ledger_path() == private_env / "perfil" / ".bottrading" / "demo" / "orders.csv"
+    monkeypatch.delenv("USERPROFILE")
+    with pytest.raises(StopTheDay, match="USERPROFILE"):
+        default_ledger_path()
+
+
+@pytest.mark.parametrize("inside", ["OneDrive", "LOCALAPPDATA", "APPDATA", "repo"])
+def test_private_location_refuses_repo_onedrive_and_appdata(monkeypatch, private_env, inside):
+    # El repositorio se publica, OneDrive se sincroniza y AppData lo virtualiza el
+    # Python de la Store (y lo borra al desinstalarse): ninguno sirve.
+    from bottrading.demo_ledger import REPO_ROOT
+    home = REPO_ROOT if inside == "repo" else private_env / inside / "sub"
+    monkeypatch.setenv("USERPROFILE", str(home))
+    with pytest.raises(StopTheDay, match="no permitida"):
         default_ledger_path()

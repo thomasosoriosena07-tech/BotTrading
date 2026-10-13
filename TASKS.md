@@ -66,8 +66,8 @@ holdout final, que se evalúa una sola vez (T017).
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
   y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
-  reconciliación reales OK; pendiente decidir la ubicación del estado
-  privado (virtualización de AppData). F2b-3 (guarda
+  reconciliación reales OK; estado privado movido a
+  %USERPROFILE%\.bottrading\demo (pendiente de Codex). F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -737,3 +737,13 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   pendiente de aprobación: mover el estado a %USERPROFILE%\.bottrading\demo
   (no virtualizado, no sincronizado), actualizar D030 y copiar los 3
   archivos tal cual (HMAC y ancla no dependen de la ruta).
+- Cambio de ubicación aprobado por el usuario ("puedes hacerlo"): el estado
+  privado pasa a %USERPROFILE%\.bottrading\demo (fuera del repositorio,
+  que está en OneDrive y se publica). default_ledger_path usa USERPROFILE y
+  check_private_location rechaza rutas dentro del repositorio, OneDrive
+  (OneDrive, OneDriveConsumer, OneDriveCommercial) o AppData (LOCALAPPDATA,
+  APPDATA). Migración: copiados baseline.json, orders.csv y orders.state
+  (hash idéntico); comprobado que Python y PowerShell ven la misma carpeta
+  (sin virtualización); check real posterior: reconciliación OK. La copia
+  antigua en la carpeta de paquete del Python de la Store queda sin uso.
+  575 passed.

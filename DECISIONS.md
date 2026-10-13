@@ -745,6 +745,11 @@ rest-api/general-api-information, errors, filters):
 
 7. Publicación automática
 - Estado privado FUERA del repositorio, en %LOCALAPPDATA%\BotTrading\demo\
+  CAMBIO (2026-10-13, aprobado por el usuario): el Python de Microsoft
+  Store virtualiza AppData y borra esa carpeta al desinstalarse o cambiar
+  de versión. El estado privado pasa a %USERPROFILE%\.bottrading\demo\;
+  el código se niega a usar una carpeta dentro del repositorio, OneDrive
+  o AppData.
   (ledger de órdenes, respuestas crudas, logs del cliente y archivo STOP
   del kill switch).
 - paper/ no recibe nada de demo. Lista cerrada de rutas por publicador:
