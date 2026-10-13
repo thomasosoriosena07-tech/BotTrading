@@ -26,7 +26,7 @@ Desde la raíz del proyecto, en PowerShell:
     python -m pip install --upgrade pip
     python -m pip install -e ".[dev]"
 
-En CMD, activar con `.venv\Scriptsctivate.bat`.
+En CMD, activar con `.venv\Scripts\activate.bat`.
 
 Las dependencias se declaran en pyproject.toml. El extra `dev`
 añade las herramientas de prueba (pytest).
