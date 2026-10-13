@@ -57,7 +57,7 @@ holdout final, que se evalúa una sola vez (T017).
   Aceptación: protocolo publicado antes de ejecutar; control BTC igual
   a D022/D024; ETH y SOL en los mismos tramos; reglas de D025 aplicadas
   sin cambios; informe reproducible.
-- [ ] T019 — Paper trading con datos públicos en tiempo real.
+- [~] T019 — Paper trading con datos públicos en tiempo real (EN CURSO hasta 2027-09-30).
   Compromiso del usuario (2026-10-13): hacerla después de T020 "con
   firmeza". Alcance de red aprobado ("sí al alcance de red de T019"):
   solo archivos diarios públicos de data.binance.vision (D027).
@@ -388,3 +388,19 @@ src/bottrading/report.py (write_crossasset_report), DECISIONS.md.
   en su entorno el control BTC y los SHA-256 de D026 (crossasset.md
   fe3bfb22..., segments.csv 1963eed0...): primera reproducción
   independiente. 334 passed.
+
+## Registro T019 (Claude Code, 2026-10-13)
+Orden: protocolo D027 publicado (275ca18) -> código probado solo con
+datos sintéticos y publicado (6b18e07) -> descarga de días cerrados
+2026-10-01 a 2026-10-12 (BTC, ETH, SOL; checksums verificados) ->
+primera simulación -> diario versionado en paper/.
+Archivos: src/bottrading/download.py (--daily), src/bottrading/paper.py,
+src/bottrading/report.py (write_paper_report), tests/test_paper.py,
+tests/test_download.py, readme.md.
+- Primera ejecución: 12 días; 4 operaciones (3 compras heredadas al
+  abrir el 2026-10-01 y una venta de ETH el 2026-10-09). Segunda
+  ejecución: 0 filas nuevas y diario reproducido (integridad correcta).
+- Guarda de red intacta: paper.py no importa el descargador.
+- `.venv\Scripts\python -m pytest -q` -> 354 passed.
+- Seguimiento: repetir descarga diaria + `python -m bottrading.paper`
+  y commit de paper/. Evaluaciones en 2027-03-31 y 2027-09-30 (D027).

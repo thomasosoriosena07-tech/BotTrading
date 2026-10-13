@@ -83,6 +83,19 @@ solo el descargador accede a data.binance.vision, sin claves API.
 La selección solo usa ventanas de validación; el holdout final se abre
 una vez, con el protocolo fijado de antemano (DECISIONS.md D020-D024).
 
+### Paper trading (desde 2026-10-01, D027)
+
+Sin dinero ni órdenes. Para actualizarlo, descargar los días cerrados y
+volver a simular (el diario `paper/ledger.csv` solo admite añadir filas):
+
+    python -m bottrading.download --symbol BTCUSDT --interval 1d --daily --start 2026-10-01
+    python -m bottrading.download --symbol ETHUSDT --interval 1d --daily --start 2026-10-01
+    python -m bottrading.download --symbol SOLUSDT --interval 1d --daily --start 2026-10-01
+    python -m bottrading.paper
+
+Después, hacer commit de `paper/` para que Git sirva de sello de tiempo.
+Puntos de control: 2027-03-31 y 2027-09-30.
+
 ## Arquitectura
 
 Paquete `src/bottrading/`, un módulo por responsabilidad:
@@ -96,6 +109,8 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `splits.py` | Particiones walk-forward y holdout final |
 | `walkforward.py` | Selección de estrategia y parámetros en validación |
 | `holdout.py` | Evaluación única del holdout final |
+| `crossasset.py` | Estrategia congelada en otros activos |
+| `paper.py` | Paper trading con diario solo de añadir |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |
