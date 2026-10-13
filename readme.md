@@ -117,6 +117,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `paper.py` | Paper trading con diario solo de añadir |
 | `dashboard.py` | Panel HTML del paper trading |
 | `execution.py` | Intención de orden, límites de D030 y ejecutor local (sin red) |
+| `demo_client.py` | Cliente de solo lectura para Binance Spot Demo (D030; aún sin uso real) |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |

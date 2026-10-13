@@ -64,8 +64,8 @@ holdout final, que se evalúa una sola vez (T017).
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
-  F0 (documento D030) y F1 (capa local) hechos y revisados. Siguiente:
-  F2a (sin red). Lectura de
+  F0 (documento D030) y F1 (capa local) hechos y revisados. F2a hecho;
+  pendiente de revisión de Codex. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
@@ -529,3 +529,26 @@ tests/test_execution.py (nuevo), readme.md. paper.py sin cambios. Sin red.
   already_today y holdings deben salir del MISMO ledger reconciliado
   (una compra registrada con posición aún plana cuenta como exposición
   pendiente; si ledger y holdings discrepan, el llamador debe detenerse).
+
+## Registro T021 F2a (Claude Code, 2026-10-13)
+Archivos: src/bottrading/demo_client.py (nuevo), tests/test_demo_client.py
+(nuevo), tests/test_download.py, readme.md. Sin red ni claves reales: ninguna
+prueba llama a Binance; el transporte real no se ha ejecutado.
+- demo_client.py: tabla cerrada de 8 peticiones GET (sin órdenes);
+  validate_request comprueba la petición YA FIRMADA (https, host exacto
+  demo-api.binance.com con puerto 443 opcional, ruta sin %, método,
+  parámetros obligatorios/permitidos con patrón, sin duplicados, query
+  canónica, recvWindow <= 5000, firma al final y recalculada) antes del
+  transporte. Opener con ProxyHandler({}) (ignora HTTPS_PROXY y similares)
+  y NoRedirectHandler (rechaza toda redirección); la URL de la respuesta
+  debe ser la pedida. Firma HMAC-SHA256 (vector oficial de Binance).
+  Credencial leída del Administrador de credenciales de Windows (CredReadW
+  con ctypes) solo al firmar; repr ocultos; errores con método, ruta,
+  código HTTP y código de Binance, sin cuerpo ni query, y sin encadenar
+  excepciones del transporte. Clasificación: rate_limited (429/418 con
+  Retry-After), unknown (5XX, -1007), rejected, transport.
+- test_download.py: la guarda estática admite exactamente download.py y
+  demo_client.py y detecta importaciones de demo_client; nuevo test sin
+  hosts de producción en src/ (con prueba de que la expresión los detecta)
+  y test de que download.py no lee credenciales.
+- 471 passed, 0 skipped; paper/ sin cambios.

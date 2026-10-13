@@ -137,27 +137,59 @@ def test_cli_reports_checksum_mismatch(tmp_path, capsys):
 # importa librerías de red, el descargador, ni importa código dinámicamente.
 NETWORK_GUARD = re.compile(
     r"^\s*(import|from)\s+(urllib|http|socket|ssl|requests|httpx|aiohttp|"
-    r"websocket|websockets|bottrading\.download)\b"
-    r"|^\s*from\s+bottrading\s+import\s+.*\bdownload\b"
+    r"websocket|websockets|bottrading\.download|bottrading\.demo_client)\b"
+    r"|^\s*from\s+bottrading\s+import\s+.*\b(download|demo_client)\b"
     r"|\b(__import__|importlib)\b",
     re.M,
 )
+# D030: exactamente dos módulos con red (datos públicos y cliente demo de lectura).
+NETWORK_MODULES = {"download.py", "demo_client.py"}
 
 
-def test_only_download_module_uses_the_network():
+def test_only_the_two_network_modules_use_the_network():
     offenders = [
         path.name for path in SRC.glob("*.py")
-        if path.name != "download.py"
+        if path.name not in NETWORK_MODULES
         and NETWORK_GUARD.search(path.read_text(encoding="utf-8"))
     ]
     assert offenders == []
+    assert all((SRC / name).is_file() for name in NETWORK_MODULES)
+
+
+# D030: ningún host de producción ni de otros servicios de Binance en src/.
+PRODUCTION_HOST = re.compile(
+    r"(?<![\w.-])(api\d*|api-gcp|fapi|dapi|eapi|papi|testnet|stream|ws-api|fstream)"
+    r"\.binance\.(com|vision|us)\b|\bbinance\.us\b", re.I)
+
+
+def test_no_production_host_in_source():
+    offenders = [path.name for path in SRC.glob("*.py")
+                 if PRODUCTION_HOST.search(path.read_text(encoding="utf-8"))]
+    assert offenders == []
+
+
+def test_production_host_guard_detects_offenders():
+    for sample in ("https://api.binance.com/api", "api3.binance.com", "API-GCP.binance.com",
+                   "testnet.binance.vision", "stream.binance.com:9443", "fapi.binance.com",
+                   "https://binance.us"):
+        assert PRODUCTION_HOST.search(sample), sample
+    for allowed in ("https://demo-api.binance.com/api", "data.binance.vision",
+                    "demo-stream.binance.com"):
+        assert not PRODUCTION_HOST.search(allowed), allowed
+
+
+def test_download_never_reads_trading_credentials():
+    text = (SRC / "download.py").read_text(encoding="utf-8")
+    assert not re.search(r"environ|getenv|Cred|API_KEY|apiKey|secret", text)
 
 
 def test_network_guard_detects_offenders():
     # La expresión de la guarda sí detecta los casos que pretende cubrir.
     samples = ["import socket", "from urllib import request", "import httpx",
                "from bottrading.download import fetch_url",
-               "from bottrading import download", "x = __import__('ssl')"]
+               "from bottrading import download", "x = __import__('ssl')",
+               "from bottrading.demo_client import DemoClient",
+               "from bottrading import demo_client"]
     assert all(NETWORK_GUARD.search(sample) for sample in samples)
     assert not NETWORK_GUARD.search("from bottrading.data import Candle")
 
