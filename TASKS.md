@@ -65,7 +65,7 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 cerrado; F2b-2 corregido, pendiente de Codex. F2b-3 (guarda
+  y revisados. F2b-1 y F2b-2 cerrados. F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -676,3 +676,8 @@ readme.md. Solo lectura y sin red en las pruebas (cliente falso).
   min(efectivo al empezar la orden, 1000), también tras una venta con
   ganancia. Pruebas: History fabricado, CoverageProof fabricada, compra de
   1000 / 1000,01 / 1150 tras una venta con ganancia en dos fills.
+- Revisión de Codex de f2dee37 (transmitida por el usuario): F2b-2 CERRADO.
+  Acepta el límite de confianza documentado (los registros de identidades
+  no son una barrera contra código malicioso en el mismo proceso). 556
+  passed. Siguiente: F2b-3 tras verificar la primera ejecución automática
+  de paper (2026-10-14).
