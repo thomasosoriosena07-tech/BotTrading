@@ -256,6 +256,29 @@ def test_lock_works_across_real_processes(book):
     assert run() == 0
 
 
+def test_lock_is_released_when_the_owner_process_is_killed(book):
+    # Revisión de Codex: el SO debe liberar el bloqueo si el proceso muere de golpe.
+    book.close()
+    code = ("import sys, time; from pathlib import Path; "
+            "from bottrading.demo_ledger import OrderLedger\n"
+            "ledger = OrderLedger(Path(sys.argv[1]))\n"
+            "print('abierto', flush=True)\ntime.sleep(60)")
+    owner = subprocess.Popen([sys.executable, "-c", code, str(book.path)],
+                             stdout=subprocess.PIPE, text=True)
+    try:
+        assert owner.stdout.readline().strip() == "abierto"
+        with pytest.raises(StopTheDay, match="otra instancia"):
+            OrderLedger(book.path, CLOCK)
+        owner.kill()  # terminación abrupta, sin close()
+        owner.wait(timeout=30)
+    finally:
+        if owner.poll() is None:
+            owner.kill()
+        owner.stdout.close()
+    with OrderLedger(book.path, CLOCK) as again:
+        assert again.records() == {}
+
+
 def test_concurrent_runs_cannot_both_post(book):
     # Dos ejecuciones: la segunda no puede ni abrir el registro mientras la primera trabaja.
     exchange = FakeExchange()

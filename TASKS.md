@@ -65,7 +65,7 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 hecho; pendiente de revisión de Codex. F2b-3 (guarda
+  y revisados. F2b-1 cerrado; siguiente F2b-2 (reconciliación). F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -618,3 +618,12 @@ interfaz Gateway (query/submit); solo existe un servidor simulado en pruebas.
   CoverageProof (lo producirá la reconciliación de F2b-2) que cubra el
   símbolo y el día; un booleano suelto se rechaza. La aprobación la recogerá
   de forma interactiva el comando de F4. 513 passed.
+- Revisión de Codex de 8c500e9 (transmitida por el usuario): se puede
+  empezar F2b-2. Criterios que quedan como aceptación: (1) liberación del
+  bloqueo si el proceso muere de golpe -> cubierto ya con una prueba que
+  mata un proceso real que tiene el registro abierto; (2) create=True solo
+  desde un flujo de inicialización explícito y aprobado; (3) CoverageProof
+  solo desde una reconciliación completa del intervalo; sin envíos reales.
+  Recordatorios: GatewayRejected solo para rechazos definitivos; tres "no
+  existe" obsoletos no prueban por sí solos la no ejecución (de ahí la
+  reconciliación). 514 passed.
