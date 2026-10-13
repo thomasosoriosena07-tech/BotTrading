@@ -65,8 +65,8 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 y F2b-2 cerrados. F3 (comandos) revisado; falta la
-  primera conexión real (clave del usuario y su visto bueno). F2b-3 (guarda
+  y revisados. F2b-1 y F2b-2 cerrados. F3: primera conexión real (check) OK;
+  falta init (lo ejecuta el usuario). F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -715,3 +715,11 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   traducen a DETENIDO en main y no en el punto que procesa cada dato; el
   tipo y el mensaje siguen visibles y TypeError/AssertionError conservan
   su traceback. 571 passed.
+- Primera conexión real (2026-10-13 18:2x, con el visto bueno del usuario,
+  "clave lista"): `python -m bottrading.demo_client check` -> código 0.
+  Credencial presente (valor nunca mostrado); desfase de reloj 475 ms (< 1000;
+  se recomienda sincronizar la hora de Windows antes de init); filtros de
+  BTCUSDT, ETHUSDT y SOLUSDT leídos; cuenta con 2 activos (USDC, USDT; USDC
+  precargado, admitido solo si no cambia, nota de D030); canTrade de la
+  CUENTA = True (el permiso de la CLAVE lo confirma el usuario en la web:
+  solo lectura); kill switch inactivo; línea base sin fijar. Solo GET.
