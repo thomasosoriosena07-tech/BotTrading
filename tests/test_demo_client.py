@@ -21,6 +21,7 @@ from bottrading.demo_client import (
     RequestRefused,
     Response,
     build_opener,
+    decode_credential_blob,
     parse_credential,
     read_windows_credential,
     sign,
@@ -161,17 +162,47 @@ def test_whitespace_control_and_non_ascii_characters_are_refused(mutate):
         validate_request("GET", mutate(signed_url()), verify)
 
 
+def no_opener():
+    raise AssertionError("no debía construirse el opener")
+
+
 def test_transport_revalidates_requests_not_built_by_prepare(monkeypatch):
-    def no_opener():
-        raise AssertionError("no debía construirse el opener")
     monkeypatch.setattr(demo, "build_opener", no_opener)
-    good = prepared()
+    good, headers = prepared_with_headers()
     for url in (good.url.replace("demo-api.binance.com", "api.binance.com"),
                 good.url + "&extra=1", "https://demo-api.binance.com/sapi/v1/account"):
         with pytest.raises(RequestRefused):
-            urllib_transport(PreparedRequest("GET", url, "/x", True), {})
+            urllib_transport(PreparedRequest("GET", url, "/x", True), headers, FAKE_STORED)
     with pytest.raises(RequestRefused):
-        urllib_transport(PreparedRequest("POST", good.url, good.path, True), {})
+        urllib_transport(PreparedRequest("POST", good.url, good.path, True), headers, FAKE_STORED)
+
+
+def test_transport_verifies_signature_with_the_stored_credential(monkeypatch):
+    # Revisión de Codex: una firma inventada (64 ceros) llegaba al transporte.
+    monkeypatch.setattr(demo, "build_opener", no_opener)
+    good, headers = prepared_with_headers()
+    forged = PreparedRequest("GET", good.url[:-64] + "0" * 64, good.path, True)
+    with pytest.raises(RequestRefused, match="firma"):
+        urllib_transport(forged, headers, FAKE_STORED)
+    other_secret = lambda: Credentials(API_KEY, "OTROsecret0123456789abcdefABCDEF")  # noqa: E731
+    with pytest.raises(RequestRefused, match="firma"):
+        urllib_transport(good, headers, other_secret)  # firmada con otro secreto
+    with pytest.raises(RequestRefused, match="cabecera"):
+        urllib_transport(good, {API_KEY_HEADER: "OTRAclave0123456789abcdef"}, FAKE_STORED)
+    with pytest.raises(RequestRefused, match="cabecera"):
+        urllib_transport(good, {}, FAKE_STORED)
+
+
+def test_transport_default_reads_the_windows_credential(monkeypatch):
+    monkeypatch.setattr(demo, "build_opener", no_opener)
+    calls = []
+    monkeypatch.setattr(demo, "read_windows_credential",
+                        lambda: calls.append(1) or Credentials(API_KEY, SECRET))
+    forged, headers = prepared_with_headers()
+    with pytest.raises(RequestRefused):
+        urllib_transport(PreparedRequest("GET", forged.url[:-64] + "0" * 64, forged.path, True),
+                         headers)
+    assert calls == [1]
 
 
 def test_signature_must_be_last_and_verified():
@@ -267,27 +298,53 @@ class FakeOpener:
         raise self.error
 
 
+FAKE_STORED = lambda: Credentials(API_KEY, SECRET)  # noqa: E731
+
+
+def prepared_with_headers():
+    return client().prepare("/api/v3/account", {"omitZeroBalances": "true"})
+
+
 def prepared():
-    return client().prepare("/api/v3/account", {"omitZeroBalances": "true"})[0]
+    return prepared_with_headers()[0]
 
 
 def test_transport_http_error_keeps_status_code_and_retry_after(monkeypatch):
-    request = prepared()
+    request, headers = prepared_with_headers()
     error = urllib.error.HTTPError(request.url, 429, "x", {"Retry-After": "7"}, None)
     monkeypatch.setattr(demo, "build_opener", lambda: FakeOpener(error))
-    response = urllib_transport(request, {})
+    response = urllib_transport(request, headers, FAKE_STORED)
     assert (response.status, response.retry_after, response.url) == (429, 7, request.url)
 
 
-def test_transport_failure_hides_url_and_chain(monkeypatch):
-    request = prepared()
+def test_transport_failure_keeps_no_exception_with_the_signed_url(monkeypatch):
+    # Revisión de Codex: `from None` ocultaba el contexto pero lo conservaba.
+    request, headers = prepared_with_headers()
     monkeypatch.setattr(demo, "build_opener",
                         lambda: FakeOpener(urllib.error.URLError(f"fallo en {request.url}")))
     with pytest.raises(DemoApiError) as info:
-        urllib_transport(request, {})
+        urllib_transport(request, headers, FAKE_STORED)
     assert info.value.kind == "transport"
-    assert info.value.__cause__ is None and info.value.__suppress_context__
-    assert "signature" not in str(info.value)
+    assert info.value.__cause__ is None and info.value.__context__ is None
+    assert not any("signature" in text for text in exception_texts(info.value))
+
+
+def test_invalid_json_and_bad_query_keep_no_context():
+    with pytest.raises(DemoApiError) as info:
+        client(FakeTransport(body=b'{"saldo": no-json')).account()
+    assert info.value.__context__ is None
+    with pytest.raises(RequestRefused) as info:
+        validate_request("GET", GOOD + "?symbol", verify)
+    assert info.value.__context__ is None
+
+
+def test_undecodable_credential_blob_keeps_no_bytes():
+    blob = "SECRETO-NO-VISIBLE".encode("utf-16-le") + bytes([0])  # longitud impar
+    with pytest.raises(CredentialError) as info:
+        decode_credential_blob(blob)
+    assert info.value.__context__ is None and info.value.__cause__ is None
+    assert not any("SECRETO" in text or "S\x00E" in text for text in exception_texts(info.value))
+    assert decode_credential_blob(f"{API_KEY}:{SECRET}".encode("utf-16-le")) == f"{API_KEY}:{SECRET}"
 
 
 # --- clasificación de errores --------------------------------------------------------

@@ -135,11 +135,17 @@ def test_cli_reports_checksum_mismatch(tmp_path, capsys):
 
 # D019: guarda ESTÁTICA, no un límite de seguridad. Ningún otro módulo
 # importa librerías de red, el descargador, ni importa código dinámicamente.
+# Límites conocidos (revisión de Codex): es una búsqueda textual; no detecta
+# por ejemplo getattr(os, "sys" + "tem") ni hosts construidos en tiempo de
+# ejecución. Las barreras reales son la validación de demo_client y el
+# bloqueo de red de tests/conftest.py.
 NETWORK_GUARD = re.compile(
     r"^\s*(import|from)\s+(urllib|http|socket|ssl|requests|httpx|aiohttp|"
     r"websocket|websockets|ctypes|subprocess|bottrading\.download|bottrading\.demo_client)\b"
     r"|^\s*from\s+bottrading\s+import\s+.*\b(download|demo_client)\b"
-    r"|\bos\.(system|popen|exec\w*|spawn\w*)\b"
+    r"|\bos\.(system|popen|exec\w*|spawn\w*|posix_spawn\w*|startfile)\b"
+    r"|^\s*from\s+os\s+import\b.*\b(system|popen|exec\w*|spawn\w*|posix_spawn\w*|startfile)\b"
+    r"|^\s*import\s+os\s+as\b"
     r"|\b(__import__|importlib)\b",
     re.M,
 )
@@ -149,8 +155,8 @@ NETWORK_MODULES = {"download.py", "demo_client.py"}
 
 def test_only_the_two_network_modules_use_the_network():
     offenders = [
-        path.name for path in SRC.glob("*.py")
-        if path.name not in NETWORK_MODULES
+        path.relative_to(SRC).as_posix() for path in SRC.rglob("*.py")
+        if path.relative_to(SRC).as_posix() not in NETWORK_MODULES
         and NETWORK_GUARD.search(path.read_text(encoding="utf-8"))
     ]
     assert offenders == []
@@ -164,7 +170,7 @@ PRODUCTION_HOST = re.compile(
 
 
 def test_no_production_host_in_source():
-    offenders = [path.name for path in SRC.glob("*.py")
+    offenders = [path.relative_to(SRC).as_posix() for path in SRC.rglob("*.py")
                  if PRODUCTION_HOST.search(path.read_text(encoding="utf-8"))]
     assert offenders == []
 
@@ -191,9 +197,13 @@ def test_network_guard_detects_offenders():
                "from bottrading import download", "x = __import__('ssl')",
                "from bottrading.demo_client import DemoClient",
                "from bottrading import demo_client", "import ctypes",
-               "from ctypes import wintypes", "import subprocess", "os.system('curl x')"]
+               "from ctypes import wintypes", "import subprocess", "os.system('curl x')",
+               "from os import system", "from os import path, popen", "import os as o",
+               "from os import execv", "os.startfile('x')"]
     assert all(NETWORK_GUARD.search(sample) for sample in samples)
     assert not NETWORK_GUARD.search("from bottrading.data import Candle")
+    assert not NETWORK_GUARD.search("import os")
+    assert not NETWORK_GUARD.search("from os import path")
 
 
 # --- redirecciones (revisión de Codex de T013b) -------------------------------------

@@ -153,11 +153,15 @@ def validate_request(method: str, url: str,
     endpoint = ENDPOINTS.get((method, parts.path))
     if endpoint is None:
         raise RequestRefused(f"petición no permitida: {method} {parts.path}")
+    # Ningún error se lanza dentro de un except: así no queda en __context__
+    # una excepción con la query (revisión de Codex).
     try:
         pairs = urllib.parse.parse_qsl(parts.query, keep_blank_values=True,
                                        strict_parsing=bool(parts.query))
-    except ValueError as exc:
-        raise RequestRefused(f"{parts.path}: query mal formada") from exc
+    except ValueError:
+        pairs = None
+    if pairs is None:
+        raise RequestRefused(f"{parts.path}: query mal formada")
     keys = [key for key, _ in pairs]
     if len(keys) != len(set(keys)):
         raise RequestRefused(f"{parts.path}: parámetros duplicados")
@@ -235,11 +239,19 @@ def read_windows_credential(target: str = CREDENTIAL_TARGET) -> Credentials:
         blob = ctypes.string_at(credential.CredentialBlob, credential.CredentialBlobSize)
     finally:
         advapi32.CredFree(pointer)
+    return parse_credential(decode_credential_blob(blob))
+
+
+def decode_credential_blob(blob: bytes) -> str:
+    """UTF-16LE (formato de cmdkey). El error no conserva los bytes: el
+    UnicodeDecodeError los llevaría en .object y en __context__."""
     try:
         text = blob.decode("utf-16-le")
     except UnicodeDecodeError:
-        raise CredentialError("credencial demo con codificación inesperada") from None
-    return parse_credential(text)
+        text = None
+    if text is None:
+        raise CredentialError("credencial demo con codificación inesperada")
+    return text
 
 
 # --- transporte ----------------------------------------------------------------------
@@ -268,27 +280,37 @@ def build_opener() -> urllib.request.OpenerDirector:
     return urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirectHandler)
 
 
-def urllib_transport(request: PreparedRequest, headers: Mapping[str, str]) -> Response:
+def urllib_transport(request: PreparedRequest, headers: Mapping[str, str],
+                     credentials: Callable[[], Credentials] | None = None) -> Response:
     """Transporte real. Solo se usa en F3 en adelante; las pruebas lo sustituyen.
 
-    Defensa adicional: revalida la estructura de la petición aunque no
-    venga de DemoClient.prepare (la firma ya se verificó al prepararla).
+    Revalida TODA petición aunque no venga de DemoClient.prepare (revisión
+    de Codex): estructura y, si es firmada, la firma recalculada con la
+    credencial guardada y la cabecera de clave. Una firma inventada no pasa
+    sin conocer el secreto.
     """
-    validate_request(request.method, request.url, _structure_only)
+    verify = None  # sin endpoint conocido, validate_request rechaza sin leer la credencial
+    endpoint = ENDPOINTS.get((request.method, urllib.parse.urlsplit(request.url).path))
+    if endpoint is not None and endpoint.signed:
+        stored = (credentials or read_windows_credential)()
+        if not hmac.compare_digest(headers.get(API_KEY_HEADER, ""), stored.api_key):
+            raise RequestRefused("cabecera de clave que no corresponde a la credencial")
+        verify = lambda payload, signature: hmac.compare_digest(  # noqa: E731
+            sign(stored.secret, payload), signature)
+    validate_request(request.method, request.url, verify)
     http_request = urllib.request.Request(request.url, method=request.method,
                                           headers={**headers, "User-Agent": "bottrading-educativo"})
+    failed = False
     try:
         with build_opener().open(http_request, timeout=TIMEOUT_SECONDS) as response:
             return Response(response.status, response.read(), response.geturl())
     except urllib.error.HTTPError as exc:  # su .url lleva la query firmada: no se encadena
         return Response(exc.code, exc.read() or b"", request.url, _retry_after(exc.headers))
-    except OSError:  # URLError, timeouts y cortes: sin respuesta; detalle omitido
-        raise DemoApiError(request.method, request.path, None) from None
-
-
-def _structure_only(payload: str, signature: str) -> bool:
-    """Para la revalidación del transporte: sin secreto no se puede recalcular."""
-    return True
+    except OSError:  # URLError, timeouts y cortes: sin respuesta
+        failed = True
+    if failed:  # fuera del except: sin __context__ con el URL firmado
+        raise DemoApiError(request.method, request.path, None)
+    raise AssertionError("inalcanzable")
 
 
 def _retry_after(headers) -> int | None:
@@ -372,8 +394,9 @@ class DemoClient:
                                response.retry_after)
         try:
             return json.loads(response.body)
-        except ValueError:
-            raise DemoApiError("GET", path, response.status) from None
+        except ValueError:  # JSONDecodeError guarda el cuerpo en .doc: no se encadena
+            pass
+        raise DemoApiError("GET", path, response.status)
 
 
 def sign(secret: str, payload: str) -> str:

@@ -558,3 +558,14 @@ prueba llama a Binance; el transporte real no se ha ejecutado.
   urllib_transport revalida la estructura de toda petición aunque no venga
   de prepare(); la guarda estática vigila además ctypes, subprocess y
   os.system/popen/exec/spawn fuera de los dos módulos de red. 478 passed.
+- Revisión de Codex de 23a4408 y 9e570df (transmitida por el usuario):
+  requiere cambios antes de F2b. Corregido: (P1) urllib_transport verifica
+  la firma recalculándola con la credencial GUARDADA y comprueba la
+  cabecera de clave, así que una firma inventada (64 ceros) o hecha con
+  otro secreto se rechaza antes del opener; (P1) ningún error relevante se
+  lanza dentro de un except, de modo que no queda __context__ con el URL
+  firmado (transporte), el cuerpo (JSONDecodeError) ni la query (parse_qsl);
+  además, el UnicodeDecodeError de la credencial (que llevaba sus bytes)
+  ya no se conserva; (P2) la guarda estática detecta from os import
+  system/popen/exec/spawn, import os as y os.startfile, recorre src/ de
+  forma recursiva y documenta sus límites (búsqueda textual). 482 passed.
