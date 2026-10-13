@@ -37,6 +37,28 @@ Ejecutar las pruebas desde la raíz del proyecto:
 
     python -m pytest
 
+## Uso
+
+Ejecutar un backtest con el dataset de ejemplo (sintético, no real):
+
+    python -m bottrading --csv examples/synthetic_daily.csv --fast 10 --slow 30
+
+Genera en `reports/synthetic_daily_sma10-30/`:
+
+- `report.md`: datos, parámetros, métricas frente a buy-and-hold,
+  notas y limitaciones.
+- `trades.csv`: operaciones simuladas con sus costes.
+- `equity.csv`: curva de capital de la estrategia y de buy-and-hold.
+
+Opciones: `--capital`, `--commission`, `--slippage`,
+`--position-fraction`, `--risk-free`, `--epoch-unit`, `--out`, `-v`.
+Ver `python -m bottrading --help`.
+
+El CSV debe tener las columnas `timestamp,open,high,low,close,volume`,
+con fechas ISO 8601 con zona horaria o epoch en milisegundos
+(`--epoch-unit s` para segundos). El dataset de ejemplo se regenera con
+`python examples/generate_synthetic.py`.
+
 ## Seguridad
 
 No incluir claves API, contraseñas, archivos .env reales

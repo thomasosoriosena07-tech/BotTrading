@@ -49,8 +49,11 @@ class Metrics:
     round_trips: list[RoundTrip]
     win_rate: float | None  # solo sobre operaciones cerradas
     open_position: bool
-    total_fees: float
-    total_slippage: float
+    total_fees: float  # comisiones de operaciones ejecutadas
+    total_slippage: float  # slippage de operaciones ejecutadas
+    # Costes hipotéticos de cerrar la posición abierta (0 si no hay):
+    # final_equity_mtm − final_value_net. No incluidos en total_fees.
+    estimated_exit_costs: float
     notes: list[str] = field(default_factory=list)
 
 
@@ -82,6 +85,12 @@ def compute_metrics(result: BacktestResult, risk_free_rate: float = 0.0) -> Metr
         notes.append("win_rate no disponible: no hay operaciones cerradas")
     if result.final_quantity > 0:
         notes.append("posición abierta al final: total_return usa su valor de liquidación")
+    gaps = irregular_gaps(result.timestamps)
+    if gaps:
+        notes.append(
+            f"{gaps} intervalos entre velas superan 1.5 veces la mediana: "
+            "hay huecos y las métricas anualizadas son menos representativas"
+        )
 
     return Metrics(
         initial_capital=initial,
@@ -103,8 +112,18 @@ def compute_metrics(result: BacktestResult, risk_free_rate: float = 0.0) -> Metr
         open_position=result.final_quantity > 0,
         total_fees=result.total_fees,
         total_slippage=result.total_slippage,
+        estimated_exit_costs=result.equity[-1] - result.final_liquidation_value,
         notes=notes,
     )
+
+
+def irregular_gaps(timestamps: Sequence[datetime], tolerance: float = 1.5) -> int:
+    """Cuenta intervalos mayores que `tolerance` veces la mediana."""
+    if len(timestamps) < 3:
+        return 0
+    gaps = [(b - a).total_seconds() for a, b in zip(timestamps, timestamps[1:])]
+    limit = statistics.median(gaps) * tolerance
+    return sum(gap > limit for gap in gaps)
 
 
 def compare_with_buy_and_hold(

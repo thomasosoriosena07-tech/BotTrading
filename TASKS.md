@@ -9,7 +9,7 @@
 - [x] T006 — Implementar motor de backtesting.
 - [x] T007 — Añadir comisiones, slippage y límites de posición.
 - [x] T008 — Calcular métricas y comparación buy-and-hold.
-- [ ] T009 — Generar informe reproducible.
+- [x] T009 — Generar informe reproducible.
 - [ ] T010 — Añadir pruebas de integración y documentación.
 - [ ] T011 — Revisión independiente con Codex.
 - [ ] T012 — Ejecutar el MVP completo con datos de ejemplo.
@@ -19,7 +19,7 @@
 - No saltar tareas bloqueadas sin documentar el motivo.
 - Registrar nuevas tareas solo si aportan valor al MVP.
 - Indicar archivos relevantes y criterios de aceptación.
-- El siguiente paso prioritario es T009.
+- El siguiente paso prioritario es T010.
 
 ## Registro T001 (Claude Code, 2026-10-13)
 Comandos: git status/branch/remote/ls-files, git ls-remote origin,
@@ -132,3 +132,20 @@ tests/test_backtest.py, DECISIONS.md (D015).
 - Revisión Codex: "listo con cambios menores". Sus dos puntos
   (separar costes ejecutados de costes estimados de liquidación y
   mostrar la limitación de intervalos irregulares) se aplican en T009.
+
+## Registro T009 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/report.py, src/bottrading/__main__.py,
+tests/test_report.py, examples/generate_synthetic.py,
+examples/synthetic_daily.csv, .gitattributes (nuevos);
+src/bottrading/metrics.py (estimated_exit_costs, irregular_gaps),
+tests/test_metrics.py, readme.md (Uso), DECISIONS.md (D016).
+Eliminado examples/.gitkeep (la carpeta ya tiene archivos).
+- `python -m bottrading --csv examples/synthetic_daily.csv` -> OK;
+  dos ejecuciones dan los mismos SHA-256 en los tres archivos.
+- Errores (archivo inexistente, fast >= slow) -> mensaje y código 2.
+- Resultado del ejemplo (SMA 10/30, datos sintéticos): estrategia
+  -8.93 % neto frente a -0.90 % de buy-and-hold. Sin valor predictivo.
+- `.venv\Scripts\python -m pytest -q` -> 167 passed.
+- Revisión Codex: "listo" (reproducibilidad verificada con hashes en
+  directorios externos). Aplicada su sugerencia: examples/README.md
+  identifica el CSV como sintético.

@@ -6,7 +6,12 @@ import pytest
 from bottrading.backtest import run_backtest
 from bottrading.config import BacktestConfig
 from bottrading.data import Candle
-from bottrading.metrics import compare_with_buy_and_hold, compute_metrics, max_drawdown
+from bottrading.metrics import (
+    compare_with_buy_and_hold,
+    compute_metrics,
+    irregular_gaps,
+    max_drawdown,
+)
 from bottrading.strategy import Signal, buy_and_hold_signals
 
 B, S, H = Signal.BUY, Signal.SELL, Signal.HOLD
@@ -183,3 +188,36 @@ def test_invalid_risk_free_rate_is_rejected(rate):
     result = run_backtest(make_candles([10] * 3), [H] * 3, NO_COSTS)
     with pytest.raises(ValueError, match="risk_free_rate"):
         compute_metrics(result, risk_free_rate=rate)
+
+
+# --- costes estimados de salida y huecos (T009) ------------------------------
+
+
+def test_estimated_exit_costs_are_separate_from_executed_costs():
+    result = run_backtest(make_candles([10, 10, 20]), [B, H, H], COSTS)
+    metrics = compute_metrics(result)
+    expected = metrics.final_equity_mtm - metrics.final_value_net
+    assert metrics.estimated_exit_costs == pytest.approx(expected)
+    assert metrics.estimated_exit_costs > 0
+    # total_fees solo incluye la compra ejecutada.
+    assert metrics.total_fees == pytest.approx(result.trades[0].fee)
+
+
+def test_estimated_exit_costs_are_zero_when_flat():
+    result = run_backtest(make_candles([10, 10, 20, 20]), [B, H, S, H], COSTS)
+    assert compute_metrics(result).estimated_exit_costs == 0
+
+
+def test_irregular_gaps_are_counted_and_noted():
+    candles = make_candles([10] * 6)
+    # Quita las velas 2 y 3: un hueco de 3 horas con mediana de 1 hora.
+    gapped = candles[:2] + candles[4:]
+    assert irregular_gaps([c.timestamp for c in gapped]) == 1
+    metrics = compute_metrics(run_backtest(gapped, [H] * 4, NO_COSTS))
+    assert any("huecos" in note for note in metrics.notes)
+
+
+def test_regular_series_has_no_gap_note():
+    metrics = compute_metrics(run_backtest(make_candles([10] * 5), [H] * 5, NO_COSTS))
+    assert irregular_gaps([START + timedelta(hours=i) for i in range(5)]) == 0
+    assert not any("huecos" in note for note in metrics.notes)

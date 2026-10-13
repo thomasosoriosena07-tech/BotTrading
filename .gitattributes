@@ -1,0 +1,3 @@
+# Los CSV de ejemplo se versionan con LF en todos los sistemas, para que
+# su SHA-256 (citado en los informes) sea el mismo en Windows y Linux.
+*.csv text eol=lf

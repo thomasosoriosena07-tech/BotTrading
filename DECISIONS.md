@@ -151,6 +151,23 @@ Estado: Aprobada (propuesta aceptada por defecto por el usuario)
   posición (compra en la apertura de la segunda vela).
 - Métrica no disponible = None, con la razón en `notes`.
 
+## D016 — Informe reproducible y dataset de ejemplo
+Estado: Aprobada (propuesta aceptada por defecto por el usuario)
+
+- `python -m bottrading --csv <archivo>` escribe report.md, trades.csv
+  y equity.csv en reports/<csv>_sma<fast>-<slow>/ (ignorado por Git).
+- Reproducible byte a byte: sin fecha de ejecución; el informe cita el
+  SHA-256 del CSV de entrada. .gitattributes fija LF en los CSV para
+  que el hash coincida entre sistemas.
+- Costes ejecutados y costes estimados de liquidación se muestran por
+  separado (recomendación de Codex en T008).
+- Huecos entre velas: se cuentan los intervalos > 1.5 × mediana y se
+  avisa en las notas y el informe; no se rechazan ni se rellenan.
+- Dataset de ejemplo: examples/synthetic_daily.csv, 800 velas diarias
+  SINTÉTICAS (paseo aleatorio geométrico, semilla 42), generado por
+  examples/generate_synthetic.py. No son datos de mercado.
+- Errores de configuración o de datos en la CLI: mensaje en stderr y
+  código de salida 2, sin traza.
+
 ## Pendientes de decisión
-- ¿Detectar huecos entre velas (intervalo irregular)? Afecta a la
-  estimación de velas por año si los huecos son frecuentes.
+- Ninguna abierta para el MVP.
