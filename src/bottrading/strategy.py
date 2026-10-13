@@ -68,6 +68,37 @@ def crossover_signals(closes: Sequence[float], fast: int, slow: int) -> list[Sig
     return signals
 
 
+def trend_filter_signals(closes: Sequence[float], window: int) -> list[Signal]:
+    """Filtro de tendencia: dentro si el cierre supera su media de `window`.
+
+    Es un cruce del precio (media de 1 vela) con su media, así que hereda
+    la semántica de crossover_signals: BUY al cruzar hacia arriba, SELL al
+    cruzar hacia abajo, los empates no son cruces.
+    """
+    return crossover_signals(closes, 1, window)
+
+
+def donchian_signals(closes: Sequence[float], entry: int, exit: int) -> list[Signal]:
+    """Ruptura de canal sobre cierres.
+
+    BUY en i si closes[i] > máximo de los `entry` cierres anteriores
+    (evaluable desde i = entry). SELL en i si closes[i] < mínimo de los
+    `exit` cierres anteriores (evaluable desde i = exit). Cada condición
+    tiene su propio calentamiento; cuando ambas son evaluables no pueden
+    darse a la vez. Solo usa cierres hasta i.
+    """
+    for name, value in (("entry", entry), ("exit", exit)):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"{name} debe ser un entero >= 1, no {value!r}")
+    signals = [Signal.HOLD] * len(closes)
+    for i in range(min(entry, exit), len(closes)):
+        if i >= entry and closes[i] > max(closes[i - entry : i]):
+            signals[i] = Signal.BUY
+        elif i >= exit and closes[i] < min(closes[i - exit : i]):
+            signals[i] = Signal.SELL
+    return signals
+
+
 def buy_and_hold_signals(length: int) -> list[Signal]:
     """Referencia: comprar al cierre de la primera vela y no vender.
 

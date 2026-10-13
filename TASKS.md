@@ -36,7 +36,7 @@ holdout final, que se evalúa una sola vez (T017).
   6 meses; horario, 6 meses y 5 ventanas de 1 mes. Las medias se
   calientan con datos anteriores sin operar en ellos. Prueba de que
   alterar el holdout no cambia nada de la selección.
-- [ ] T015 — Hasta dos estrategias adicionales.
+- [x] T015 — Hasta dos estrategias adicionales.
   Aceptación: misma interfaz de señales; prueba de prefijos (no
   look-ahead) para cada una; costes y ejecución idénticos.
 - [ ] T016 — Selección en walk-forward (sin tocar el holdout).
@@ -297,3 +297,19 @@ DECISIONS.md (D020).
   posición por tramo (estrategia y buy-and-hold entran a la vez; nuevo
   initial_signal en run_backtest) y rechazo de fechas desordenadas en
   plan_splits -> 271 passed.
+
+## Registro T015 (Claude Code, 2026-10-13)
+Archivos: src/bottrading/strategy.py (trend_filter_signals,
+donchian_signals), tests/test_strategy.py, DECISIONS.md (D021).
+- Estrategias y criterio de selección aprobados por el usuario y
+  registrados ANTES de ejecutar nada sobre datos reales.
+- Pruebas: valores calculados a mano, empates, primera señal posible,
+  validación de parámetros y prueba de prefijos (no look-ahead) para
+  ambas estrategias.
+- `.venv\Scripts\python -m pytest -q` -> 282 passed.
+- Revisión Codex: "requiere cambios". Corregido: Donchian evaluaba
+  ambas condiciones desde max(entry, exit) y retrasaba señales; ahora
+  cada una tiene su calentamiento (pruebas con entry < exit y
+  exit < entry). Añadidas pruebas de herencia de posición para las dos
+  estrategias nuevas. D021: regla de "sin ventaja" si la mediana es
+  <= 0 y rejillas registradas (22). -> 285 passed.

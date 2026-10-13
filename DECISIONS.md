@@ -257,6 +257,37 @@ Estado: Aprobada (diseño propuesto por Codex en la revisión del plan)
   backtests): validaciones del 2022-11-26 al 2025-05-25; holdout del
   2025-05-26 al 2026-09-30 (493 velas, anualizable).
 
+## D021 — Estrategias adicionales y criterio de selección
+Estado: Aprobada por el usuario (2026-10-13), fijada ANTES de ver
+resultados con datos reales.
+
+Estrategias (src/bottrading/strategy.py), todas causales y con la misma
+interfaz (cierres -> una señal por vela):
+- Cruce de medias (D012): fast < slow.
+- Filtro de tendencia: cierre frente a su media de N velas; equivale a
+  crossover_signals(closes, 1, N), con la misma regla de empates.
+- Ruptura de canal (Donchian) sobre CIERRES: BUY si el cierre supera el
+  máximo de los N cierres anteriores; SELL si cae bajo el mínimo de los
+  M anteriores; cada condición con su propio calentamiento (corregido
+  tras la revisión de Codex). Usa cierres porque la interfaz de señales
+  solo recibe cierres; no es el Donchian clásico de máximos y mínimos.
+
+Criterio de selección para T016 (fijado de antemano): para cada
+combinación (estrategia × parámetros), mediana del Sharpe de las 5
+ventanas de validación; gana la mediana más alta; desempate por menor
+mediana de drawdown máximo. Si el Sharpe de una ventana no está
+disponible (p. ej. volatilidad cero: todo el tramo en efectivo), cuenta
+como 0. Si la ganadora tiene mediana <= 0, el informe dirá que ninguna
+combinación mostró ventaja en validación (observación de Codex: el 0 de
+quedarse en efectivo no demuestra ventaja). Se publican los resultados
+de cada ventana, no solo la mediana.
+
+Rejillas (registradas antes de ejecutar; 22 combinaciones en total):
+- Cruce: fast {10, 20, 50} × slow {50, 100, 200}, fast < slow (8).
+- Filtro de tendencia: N {20, 50, 100, 150, 200} (5).
+- Donchian: entrada {20, 55, 100} × salida {10, 20, 50} (9).
+Costes por defecto de D014; capital 10 000; posición 100 %.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).

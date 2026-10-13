@@ -3,7 +3,9 @@ import pytest
 from bottrading.strategy import (
     Signal,
     crossover_signals,
+    donchian_signals,
     simple_moving_average,
+    trend_filter_signals,
     validate_windows,
 )
 
@@ -122,3 +124,69 @@ def test_signals_do_not_use_future_data():
 def test_invalid_windows_are_rejected(fast, slow, message):
     with pytest.raises(ValueError, match=message):
         validate_windows(fast, slow)
+
+
+# --- estrategias adicionales (T015) ---------------------------------------------------
+
+
+def test_trend_filter_is_price_versus_its_average():
+    closes = [5, 4, 3, 4, 6, 7, 5, 3]
+    # Media de 3: i2=4, i3=3.67, i4=4.33, i5=5.67, i6=6, i7=5.
+    # Cierre - media: i2 -1 | i3 +0.33 (BUY) | i4..i5 + | i6 -1 (SELL) | i7 -2.
+    assert trend_filter_signals(closes, 3) == [H, H, H, B, H, H, S, H]
+
+
+def test_trend_filter_rejects_window_one():
+    with pytest.raises(ValueError, match="menor que slow"):
+        trend_filter_signals([1, 2, 3], 1)
+
+
+def test_donchian_breakouts():
+    closes = [10, 11, 12, 11, 13, 12, 9, 10, 14]
+    # entry=3: compra si supera el máximo de los 3 cierres anteriores.
+    # exit=2: vende si cae bajo el mínimo de los 2 anteriores.
+    # i=3: 11 vs max(10,11,12)=12 no; vs min(11,12)=11 no -> H
+    # i=4: 13 > 12 -> B; i=5: 12 vs max 13 no, min(11,13)=11 no -> H
+    # i=6: 9 < min(13,12) -> S; i=7: 10 vs max(13,12,9) no, min(12,9)=9 no -> H
+    # i=8: 14 > max(12,9,10) -> B
+    assert donchian_signals(closes, 3, 2) == [H, H, H, H, B, H, S, H, B]
+
+
+def test_donchian_buy_needs_only_entry_warmup():
+    # Revisión de Codex: con entry < exit, la compra no espera a exit.
+    closes = list(range(1, 12))  # siempre nuevos máximos
+    signals = donchian_signals(closes, 2, 5)
+    assert signals[:2] == [H] * 2
+    assert signals[2:] == [B] * 9
+
+
+def test_donchian_sell_needs_only_exit_warmup():
+    closes = list(range(11, 0, -1))  # siempre nuevos mínimos
+    signals = donchian_signals(closes, 5, 2)
+    assert signals[:2] == [H] * 2
+    assert signals[2:] == [S] * 9
+
+
+def test_donchian_equal_close_is_not_a_breakout():
+    assert donchian_signals([5, 5, 5, 5], 2, 2) == [H] * 4
+
+
+@pytest.mark.parametrize(("entry", "exit"), [(0, 2), (2, 0), (1.5, 2), (True, 2)])
+def test_donchian_rejects_invalid_windows(entry, exit):
+    with pytest.raises(ValueError):
+        donchian_signals([1, 2, 3], entry, exit)
+
+
+@pytest.mark.parametrize(
+    "signal_function",
+    [
+        lambda closes: trend_filter_signals(closes, 4),
+        lambda closes: donchian_signals(closes, 3, 2),
+    ],
+)
+def test_new_strategies_do_not_use_future_data(signal_function):
+    # Igual que para el cruce: cada prefijo da las mismas señales.
+    closes = [10, 9, 8, 7, 6, 7, 8, 9, 10, 11, 10, 9, 8, 7, 6, 8, 12, 11]
+    full = signal_function(closes)
+    for k in range(len(closes) + 1):
+        assert signal_function(closes[:k]) == full[:k]

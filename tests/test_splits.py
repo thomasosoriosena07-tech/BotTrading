@@ -14,7 +14,13 @@ from bottrading.splits import (
     evaluate_segment,
     plan_splits,
 )
-from bottrading.strategy import Signal, buy_and_hold_signals, crossover_signals
+from bottrading.strategy import (
+    Signal,
+    buy_and_hold_signals,
+    crossover_signals,
+    donchian_signals,
+    trend_filter_signals,
+)
 
 START = datetime(2020, 1, 1, tzinfo=timezone.utc)
 NO_COSTS = BacktestConfig(initial_capital=1000, commission_rate=0, slippage_rate=0)
@@ -187,6 +193,24 @@ def test_strategy_and_buy_and_hold_enter_segment_at_same_open():
                                  lambda closes: buy_and_hold_signals(len(closes)), NO_COSTS)
     assert strategy.trades[0].execution_time == benchmark.trades[0].execution_time
     assert strategy.equity == benchmark.equity
+
+
+@pytest.mark.parametrize(
+    "signal_function",
+    [lambda closes: trend_filter_signals(closes, 3),
+     lambda closes: donchian_signals(closes, 3, 2)],
+)
+def test_new_strategies_inherit_long_position(signal_function):
+    # Revisión de Codex de T015: herencia también con las nuevas estrategias.
+    prices = [10, 9, 8, 7, 6, 9, 12, 13, 14, 15, 16, 17]
+    candles = candles_from(prices)
+    signals = signal_function(prices)
+    entry = signals.index(Signal.BUY)
+    start = entry + 3
+    assert Signal.SELL not in signals[entry:start]
+    result = evaluate_segment(candles, start, len(prices), signal_function, NO_COSTS)
+    assert result.trades[0].side is Signal.BUY
+    assert result.trades[0].execution_time == candles[start].timestamp
 
 
 def test_unordered_timestamps_are_rejected():
