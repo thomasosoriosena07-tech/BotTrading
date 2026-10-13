@@ -423,6 +423,40 @@ código publicado en d840d76).
   periodos) ni demuestra una ventaja. No se ajusta nada a la vista de
   estos resultados.
 
+## D027 — Protocolo del paper trading (T019, registrado ANTES de empezar)
+Estado: Aprobada por el usuario ("sí al alcance de red de T019",
+2026-10-13). Publicada antes de descargar datos diarios o simular nada.
+
+Alcance de red (amplía D019 sin servidores nuevos):
+- download.py podrá descargar también archivos DIARIOS públicos:
+  https://data.binance.vision/data/spot/daily/klines/<SYM>/1d/... con su
+  .CHECKSUM. Mismo host, mismas protecciones (HTTPS, redirecciones
+  restringidas, checksum antes de escribir). Solo días cerrados.
+- Sin API, sin claves, sin cuenta, sin órdenes. El simulador de paper
+  trading NO accede a la red (la guarda estática de D019 se mantiene).
+
+Qué se simula:
+- trend_filter(window=50) congelada (D022), en BTCUSDT, ETHUSDT y
+  SOLUSDT, frente a buy-and-hold; costes base (D014); capital 10 000
+  por activo; velas diarias.
+- Inicio: 2026-10-01 (primer día posterior al holdout). Historial hasta
+  2026-09-30 de los archivos mensuales (solo calentamiento y herencia de
+  posición, D020); desde 2026-10-01, solo archivos diarios. Se exigen
+  todos los días, sin huecos.
+- Diario de operaciones versionado en paper/ (no ignorado por Git). Cada
+  ejecución recalcula todo de forma determinista y DEBE reproducir las
+  filas ya registradas: si alguna cambia, error (diario solo de
+  añadir). El historial de Git sirve de sello de tiempo.
+
+Evaluación fijada de antemano:
+- Puntos de control: 2027-03-31 (6 meses, preliminar) y 2027-09-30
+  (12 meses, principal).
+- En cada punto y activo: reglas de D023 (gana más que buy-and-hold,
+  mejor Sharpe, menor riesgo) y protección (menor drawdown).
+- Sin cambios de estrategia, parámetros ni costes durante la prueba. Un
+  resultado malo se publica igual. Un año de un solo periodo sigue sin
+  demostrar una ventaja estadística.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).
