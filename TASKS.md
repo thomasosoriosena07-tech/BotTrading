@@ -758,3 +758,10 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   mklink /J, sin permisos especiales). La ubicación real sigue siendo válida.
   No queda ninguna instancia antigua escribiendo en la ubicación anterior
   (no hay tareas demo programadas). 578 passed.
+- Revisión de Codex de b921dad (transmitida por el usuario): un error de
+  lectura del registro se trataba como "sin OneDrive". Corregido (fallo
+  cerrado): solo FileNotFoundError (clave o valor ausentes) y el error 259
+  (fin de la enumeración) son normales; cualquier otro error (p. ej.
+  permisos) detiene con StopTheDay, lanzado fuera del except. Pruebas con un
+  winreg simulado; el lector real de este equipo devuelve
+  C:\Users\thoma\OneDrive y la ubicación real sigue aceptada. 579 passed.

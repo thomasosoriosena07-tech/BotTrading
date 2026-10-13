@@ -463,6 +463,62 @@ def test_relative_paths_case_and_links_are_resolved_first(monkeypatch, private_e
         check_private_location(link / "orders.csv", lambda: [synced])
 
 
+class FakeRegistry:
+    """winreg simulado: cuentas -> UserFolder o excepción."""
+
+    HKEY_CURRENT_USER = "HKCU"
+
+    def __init__(self, accounts=None, open_root=None, enum_error=None):
+        self.accounts, self.open_root, self.enum_error = accounts or {}, open_root, enum_error
+
+    class Key:
+        def __init__(self, name):
+            self.name = name
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def OpenKey(self, parent, name):
+        if parent == self.HKEY_CURRENT_USER:
+            if self.open_root:
+                raise self.open_root
+            return self.Key("root")
+        return self.Key(name)
+
+    def EnumKey(self, key, index):
+        names = list(self.accounts)
+        if index < len(names):
+            return names[index]
+        if self.enum_error:
+            raise self.enum_error
+        error = OSError("no more items")
+        error.winerror = 259
+        raise error
+
+    def QueryValueEx(self, key, value):
+        folder = self.accounts[key.name]
+        if isinstance(folder, Exception):
+            raise folder
+        return folder, 1
+
+
+def test_registry_absence_is_normal_but_other_read_errors_stop():
+    # Revisión de Codex: fallo cerrado ante errores inesperados de lectura.
+    from bottrading.demo_ledger import onedrive_registry_roots
+    assert onedrive_registry_roots(FakeRegistry(open_root=FileNotFoundError())) == []
+    assert onedrive_registry_roots(FakeRegistry(
+        {"Personal": "C:\\Sinc", "Business1": FileNotFoundError(), "Vacia": ""})) == \
+        [Path("C:\\Sinc")]
+    for registry in (FakeRegistry(open_root=PermissionError()),
+                     FakeRegistry({"Personal": PermissionError()}),
+                     FakeRegistry({"Personal": "C:\\Sinc"}, enum_error=PermissionError())):
+        with pytest.raises(StopTheDay, match="registro"):
+            onedrive_registry_roots(registry)
+
+
 def test_real_registry_reader_returns_paths():
     from bottrading.demo_ledger import onedrive_registry_roots
     assert all(isinstance(root, Path) for root in onedrive_registry_roots())

@@ -67,32 +67,55 @@ def default_ledger_path() -> Path:
     return path
 
 
-def onedrive_registry_roots() -> list[Path]:
+ERROR_NO_MORE_ITEMS = 259  # fin normal de la enumeración de subclaves
+
+
+def onedrive_registry_roots(registry=None) -> list[Path]:
     """Carpetas que OneDrive sincroniza de verdad, según el registro de Windows
-    (HKCU\\Software\\Microsoft\\OneDrive\\Accounts\\*\\UserFolder)."""
-    if sys.platform != "win32":
-        return []
-    import winreg
-    roots = []
+    (HKCU\\Software\\Microsoft\\OneDrive\\Accounts\\*\\UserFolder).
+
+    Fallo cerrado (revisión de Codex): solo la AUSENCIA de la clave o del
+    valor (FileNotFoundError) y el fin de la enumeración (error 259) son
+    normales; cualquier otro error de lectura (p. ej. permisos) detiene,
+    porque podría ocultar una carpeta sincronizada con nombre no habitual.
+    `registry` permite inyectar un winreg simulado en las pruebas.
+    """
+    if registry is None:
+        if sys.platform != "win32":
+            return []
+        import winreg as registry
+    roots, unexpected = [], None
     try:
-        accounts = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\OneDrive\Accounts")
-    except OSError:
+        accounts = registry.OpenKey(registry.HKEY_CURRENT_USER,
+                                    r"Software\Microsoft\OneDrive\Accounts")
+    except FileNotFoundError:
         return []  # OneDrive no está configurado para este usuario
-    with accounts:
-        index = 0
-        while True:
-            try:
-                name = winreg.EnumKey(accounts, index)
-            except OSError:
-                break
-            index += 1
-            try:
-                with winreg.OpenKey(accounts, name) as account:
-                    folder, _ = winreg.QueryValueEx(account, "UserFolder")
-            except OSError:
-                continue
-            if isinstance(folder, str) and folder:
-                roots.append(Path(folder))
+    except OSError as error:
+        accounts, unexpected = None, type(error).__name__
+    if accounts is not None:
+        with accounts:
+            index = 0
+            while unexpected is None:
+                try:
+                    name = registry.EnumKey(accounts, index)
+                except OSError as error:
+                    if getattr(error, "winerror", None) != ERROR_NO_MORE_ITEMS:
+                        unexpected = type(error).__name__
+                    break
+                index += 1
+                folder = None
+                try:
+                    with registry.OpenKey(accounts, name) as account:
+                        folder, _ = registry.QueryValueEx(account, "UserFolder")
+                except FileNotFoundError:
+                    folder = None  # cuenta sin carpeta sincronizada
+                except OSError as error:
+                    unexpected = type(error).__name__
+                if isinstance(folder, str) and folder:
+                    roots.append(Path(folder))
+    if unexpected is not None:
+        raise StopTheDay(f"no se pudo leer la configuración de OneDrive del registro "
+                         f"({unexpected}): no se puede garantizar una ubicación privada")
     return roots
 
 
