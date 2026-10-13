@@ -18,7 +18,9 @@ discrepancia lanza StopTheDay y no se envía nada (D030, punto 3).
 """
 
 import hashlib
+import hmac
 import json
+import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -109,25 +111,45 @@ def baseline_from(day: date, account: Mapping, open_orders: Mapping[str, Sequenc
                     {s: max((t["id"] for t in trades[s]), default=0) for s in DEMO_SYMBOLS})
 
 
-def save_baseline(path: Path, baseline: Baseline) -> None:
-    """Solo desde la inicialización explícita y aprobada; nunca sobrescribe."""
-    if path.exists():
-        raise StopTheDay("la línea base ya existe: una nueva requiere --rebaseline aprobado")
-    payload = baseline.payload()
+# Integridad (revisión de Codex): un hash dentro del propio archivo se puede
+# recalcular tras editarlo. Se usa un HMAC con una clave derivada del SECRETO
+# de la credencial demo (Administrador de credenciales): editar la línea base
+# de forma coherente exige conocer ese secreto. Límite: ningún mecanismo
+# local impide del todo a un proceso del mismo usuario que lea la credencial.
+
+
+def _baseline_mac(secret: str, payload: dict) -> str:
+    key = hmac.new(secret.encode("ascii"), b"bottrading-baseline-v1", hashlib.sha256).digest()
     canonical = json.dumps(payload, sort_keys=True).encode("utf-8")
-    document = {**payload, "sha256": hashlib.sha256(canonical).hexdigest()}
+    return hmac.new(key, canonical, hashlib.sha256).hexdigest()
+
+
+def save_baseline(path: Path, baseline: Baseline, secret: str) -> None:
+    """Solo desde la inicialización explícita y aprobada; creación EXCLUSIVA."""
+    payload = baseline.payload()
+    document = {**payload, "hmac": _baseline_mac(secret, payload)}
+    content = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    created = True
+    try:
+        handle = open(path, "xb")  # falla si ya existe, de forma atómica
+    except FileExistsError:
+        created = False
+    if not created:
+        raise StopTheDay("la línea base ya existe: una nueva requiere --rebaseline aprobado")
+    with handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
-def load_baseline(path: Path) -> Baseline:
+def load_baseline(path: Path, secret: str) -> Baseline:
     if not path.exists():
         raise StopTheDay("no hay línea base: inicializa la cuenta demo de forma explícita")
     document = json.loads(path.read_text(encoding="utf-8"))
-    digest = document.pop("sha256", None)
-    canonical = json.dumps(document, sort_keys=True).encode("utf-8")
-    if digest != hashlib.sha256(canonical).hexdigest():
-        raise StopTheDay("la línea base no coincide con su hash: detenerse")
+    mac = document.pop("hmac", None)
+    if not isinstance(mac, str) or not hmac.compare_digest(mac, _baseline_mac(secret, document)):
+        raise StopTheDay("la línea base no coincide con su HMAC (editada o clave distinta)")
     return Baseline(date.fromisoformat(document["since"]),
                     {a: Decimal(v) for a, v in document["balances"].items()},
                     {s: int(v) for s, v in document["last_order_id"].items()},
@@ -137,8 +159,19 @@ def load_baseline(path: Path) -> Baseline:
 # --- paginación con cursores inclusivos ----------------------------------------------
 
 
+@dataclass(frozen=True)
+class History:
+    """Historial completo de un símbolo tras last_id. Solo lo construye
+    fetch_after (un test estático lo comprueba): reconcile_data no acepta
+    listas sueltas, así que la cobertura procede de una paginación completa."""
+
+    rows: tuple[Mapping, ...]
+    key: str
+    after: int
+
+
 def fetch_after(fetch_page: Callable[[int], Sequence[Mapping]], last_id: int,
-                key: str) -> list[Mapping]:
+                key: str) -> History:
     """Filas con `key` > last_id. fetch_page(cursor) devuelve filas con key >= cursor."""
     rows, cursor = [], last_id
     while True:
@@ -150,7 +183,7 @@ def fetch_after(fetch_page: Callable[[int], Sequence[Mapping]], last_id: int,
             raise StopTheDay(f"página que empieza antes del cursor ({key})")
         rows += [row for row in page if row[key] > cursor]
         if len(page) < PAGE_LIMIT:
-            return rows
+            return History(tuple(rows), key, last_id)
         # Página llena, ordenada, sin repetidos y desde el cursor: ids[-1] > cursor,
         # así que siempre avanza; un servidor que repita la página cae en
         # "antes del cursor" en la siguiente vuelta.
@@ -169,9 +202,19 @@ class Reconciliation:
 
 def reconcile_data(baseline: Baseline, infos: Mapping[str, SymbolInfo],
                    records: Mapping[str, OrderRecord], open_orders: Mapping[str, Sequence],
-                   orders: Mapping[str, Sequence], trades: Mapping[str, Sequence],
+                   orders: Mapping[str, History], trades: Mapping[str, History],
                    account: Mapping) -> Reconciliation:
     """Lanza StopTheDay ante cualquier discrepancia; si no, posiciones y cobertura."""
+    for symbol in DEMO_SYMBOLS:
+        expected_keys = (("orderId", orders, baseline.last_order_id),
+                         ("id", trades, baseline.last_trade_id))
+        for key, histories, last_ids in expected_keys:
+            history = histories.get(symbol)
+            if not isinstance(history, History) or history.key != key or \
+                    history.after != last_ids.get(symbol, 0):
+                raise StopTheDay(f"{symbol}: historial sin paginación completa desde la línea base")
+    orders = {s: list(h.rows) for s, h in orders.items()}
+    trades = {s: list(h.rows) for s, h in trades.items()}
     problems: list[str] = []
     for record in records.values():
         if not record.final:
@@ -189,7 +232,9 @@ def reconcile_data(baseline: Baseline, infos: Mapping[str, SymbolInfo],
                 problems.append(f"{symbol}: comisión en un activo no admitido")
         if not problems:
             _apply_trades(expected, info, orders[symbol], trades[symbol])
-            holdings[symbol] = _holding(info, orders[symbol], trades[symbol])
+            holding, holding_problems = _holding(info, orders[symbol], trades[symbol])
+            problems += holding_problems
+            holdings[symbol] = holding
     if problems:
         raise StopTheDay("reconciliación incompleta o con discrepancias: " + "; ".join(problems))
 
@@ -218,7 +263,13 @@ def _check_orders(symbol: str, orders: Sequence[Mapping], trades: Sequence[Mappi
         if record is None or record.intent.symbol != symbol:
             problems.append(f"{symbol}: orden {order_id} ajena o fuera del registro")
             continue
+        if client_id in seen:  # revisión de Codex: dos órdenes con el mismo id
+            problems.append(f"{client_id}: aparece más de una vez en el exchange")
+            continue
         seen.add(client_id)
+        if order.get("symbol") != symbol or \
+                order.get("side") != record.intent.side.value.upper():
+            problems.append(f"{client_id}: símbolo o lado distintos de la intención")
         executed = _decimal(order.get("executedQty"), "executedQty")
         quote = _decimal(order.get("cummulativeQuoteQty"), "cummulativeQuoteQty")
         if record.status != order.get("status") or record.executed_qty is None or \
@@ -252,31 +303,47 @@ def _apply_trades(balances: dict[str, Decimal], info: SymbolInfo, orders: Sequen
             _decimal(trade["commission"], "commission")
 
 
-def _holding(info: SymbolInfo, orders: Sequence[Mapping], trades: Sequence[Mapping]) -> Holding:
+def _holding(info: SymbolInfo, orders: Sequence[Mapping],
+             trades: Sequence[Mapping]) -> tuple[Holding, list[str]]:
     """Posición del presupuesto de D030 a partir de los fills reales.
 
-    Un resto menor que stepSize (polvo tras pagar comisión en el activo
-    base) cuenta como sin posición. `cost` es lo pagado por la compra que
-    abrió la posición vigente.
+    Un resto en [0, stepSize) (polvo tras pagar comisión en el activo base)
+    cuenta como sin posición. `cost` es lo pagado por la compra que abrió la
+    posición vigente. Se rechazan estados imposibles (revisión de Codex):
+    comprar con posición abierta, vender sin posición o más de lo poseído,
+    efectivo negativo o cantidad negativa.
     """
     sides = {o["orderId"]: o.get("side") for o in orders}
     cash, quantity, cost = Decimal(str(BUDGET_PER_ASSET)), Decimal(0), Decimal(0)
+    order_start: dict[int, Decimal] = {}  # cantidad poseída antes de cada orden
+    problems = []
     for trade in sorted(trades, key=lambda t: t["id"]):
         qty, quote = _decimal(trade["qty"], "qty"), _decimal(trade["quoteQty"], "quoteQty")
         fee = _decimal(trade["commission"], "commission")
+        start_qty = order_start.setdefault(trade["orderId"], quantity)
         if sides.get(trade["orderId"]) == "BUY":
-            if quantity < info.step_size:
-                cost = Decimal(0)  # nueva posición
+            if start_qty >= info.step_size:
+                problems.append(f"{info.symbol}: compra con una posición ya abierta")
+            if start_qty < info.step_size and quantity == start_qty:
+                cost = Decimal(0)  # primer fill de una nueva posición
             cash, quantity, cost = cash - quote, quantity + qty, cost + quote
         else:
+            if start_qty < info.step_size:
+                problems.append(f"{info.symbol}: venta sin posición del bot")
             cash, quantity = cash + quote, quantity - qty
         if trade["commissionAsset"] == QUOTE_ASSET:
             cash -= fee
         elif trade["commissionAsset"] == info.base_asset:
             quantity -= fee
+        if quantity < 0:
+            problems.append(f"{info.symbol}: se vendió más de lo poseído")
+        if cash < 0:
+            problems.append(f"{info.symbol}: efectivo negativo; se superó el presupuesto")
+    if problems:
+        return Holding(0.0), sorted(set(problems))
     if quantity < info.step_size:
-        return Holding(float(cash))
-    return Holding(float(cash), float(quantity), float(cost))
+        return Holding(float(cash)), []
+    return Holding(float(cash), float(quantity), float(cost)), []
 
 
 # --- obtención de datos (solo lectura) -----------------------------------------------

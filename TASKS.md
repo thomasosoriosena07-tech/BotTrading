@@ -65,7 +65,7 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 cerrado; F2b-2 hecho, pendiente de Codex. F2b-3 (guarda
+  y revisados. F2b-1 cerrado; F2b-2 corregido, pendiente de Codex. F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -651,3 +651,16 @@ readme.md. Solo lectura y sin red en las pruebas (cliente falso).
 - Interpretación de D030 anotada allí: activos precargados admitidos solo
   si siguen exactamente como en la línea base.
 - Cálculos con Decimal desde los textos de Binance. 542 passed.
+- Revisión de Codex de 333d47d (transmitida por el usuario): requiere
+  cambios. Acepta la excepción de activos precargados (sin cambios
+  exactos). Corregido: (P1) clientOrderId repetido en el exchange y
+  símbolo o lado distintos de la intención detienen; (P1) _holding rechaza
+  compra con posición abierta, venta sin posición del bot, venta mayor que
+  lo poseído, cantidad o efectivo negativos (aunque el saldo total cuadre
+  gracias a activos precargados); (P1) la línea base usa HMAC con clave
+  derivada del secreto de la credencial y creación exclusiva ("xb"): un
+  hash recalculado ya no basta; (P2) reconcile_data solo acepta History,
+  que solo produce fetch_after (paginación completa desde la línea base, con
+  clave y cursor comprobados); un test estático verifica que CoverageProof
+  y History solo se construyen en esos dos puntos. Corregida también una
+  prueba propia que vendía más de lo poseído. 552 passed.

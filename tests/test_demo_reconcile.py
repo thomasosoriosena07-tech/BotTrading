@@ -1,7 +1,9 @@
 """Reconciliación de la cuenta demo (D030, F2b-2) con datos sintéticos, sin red."""
 
 import json
+import re
 from datetime import date, datetime, timezone
+from pathlib import Path
 from decimal import Decimal
 
 import pytest
@@ -17,6 +19,7 @@ from bottrading.demo_ledger import (
 from bottrading.demo_reconcile import (
     PAGE_LIMIT,
     Baseline,
+    History,
     SymbolInfo,
     baseline_from,
     fetch_after,
@@ -87,9 +90,19 @@ class Exchange:
                              for a, v in self.balances.items()]}
 
 
+SECRET = "FAKEsecret9876543210zyxwvuZYXWVU"
+
+
+def history(rows, key, after=0):
+    # Única forma de obtener un History: una paginación completa con fetch_after.
+    return fetch_after(lambda c: [r for r in rows if r[key] >= c], after, key)
+
+
 def data(exchange, open_orders=None):
     return dict(open_orders=open_orders or {s: [] for s in SYMBOLS},
-                orders=exchange.orders, trades=exchange.trades, account=exchange.account())
+                orders={s: history(exchange.orders[s], "orderId") for s in SYMBOLS},
+                trades={s: history(exchange.trades[s], "id") for s in SYMBOLS},
+                account=exchange.account())
 
 
 @pytest.fixture
@@ -144,7 +157,7 @@ def test_commission_in_base_quote_or_bnb_is_accounted(book, fee_asset):
 def test_sell_leaving_dust_counts_as_flat(book):
     exchange = Exchange()
     records = filled_book(book, exchange)
-    sold = Decimal("0.01997")  # vendido redondeando a stepSize: queda polvo < 0.00001
+    sold = Decimal("0.01996")  # 0.01996002 poseídos, redondeado a stepSize: polvo 2e-8
     exchange.fill("BTCUSDT", "bt-BTCUSDT-20261013-S", "SELL", sold, sold * 51000, Decimal("1"),
                   "USDT")
     sell = OrderIntent("BTCUSDT", Signal.SELL, DAY.replace(day=13), quantity=float(sold))
@@ -153,7 +166,7 @@ def test_sell_leaving_dust_counts_as_flat(book):
     book.append(sell, "FINAL", "FILLED", float(sold))
     holding = reconcile_data(BASELINE, INFOS, book.records(), **data(exchange)).holdings["BTCUSDT"]
     assert (holding.quantity, holding.cost) == (0.0, 0.0)
-    assert holding.cash == pytest.approx(1000 - 999 + 0.01997 * 51000 - 1)
+    assert holding.cash == pytest.approx(1000 - 999 + 0.01996 * 51000 - 1)
 
 
 # --- discrepancias: siempre StopTheDay -----------------------------------------------
@@ -261,7 +274,7 @@ def pager(ids, limit=PAGE_LIMIT):
 def test_pagination_with_inclusive_cursor_and_gaps():
     ids = [3, 7, 8] + list(range(20, 2020, 2))  # huecos numéricos: no son falta de datos
     fetch, calls = pager(ids)
-    rows = fetch_after(fetch, 7, "orderId")
+    rows = fetch_after(fetch, 7, "orderId").rows
     assert [r["orderId"] for r in rows] == [i for i in ids if i > 7]
     assert calls[0] == 7 and len(calls) == 2  # la fila igual al cursor se descarta
 
@@ -305,16 +318,34 @@ def test_baseline_requires_no_open_orders_and_short_history(tmp_path):
 def test_baseline_is_saved_once_and_tamper_evident(tmp_path):
     path = tmp_path / "baseline.json"
     with pytest.raises(StopTheDay, match="no hay línea base"):
-        load_baseline(path)
-    save_baseline(path, BASELINE)
-    assert load_baseline(path) == BASELINE
+        load_baseline(path, SECRET)
+    save_baseline(path, BASELINE, SECRET)
+    assert load_baseline(path, SECRET) == BASELINE
     with pytest.raises(StopTheDay, match="ya existe"):
-        save_baseline(path, BASELINE)
+        save_baseline(path, BASELINE, SECRET)
+    with pytest.raises(StopTheDay, match="HMAC"):
+        load_baseline(path, "OTROsecret0123456789abcdefABCDEF")  # clave distinta
     document = json.loads(path.read_text(encoding="utf-8"))
     document["balances"]["USDT"] = "999999"
     path.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(StopTheDay, match="hash"):
-        load_baseline(path)
+    with pytest.raises(StopTheDay, match="HMAC"):
+        load_baseline(path, SECRET)
+
+
+def test_coordinated_edit_with_a_recomputed_hash_is_detected(tmp_path):
+    # Revisión de Codex: editar los datos y recalcular un SHA-256 no debe bastar.
+    import hashlib
+    path = tmp_path / "baseline.json"
+    save_baseline(path, BASELINE, SECRET)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document.pop("hmac")
+    document["balances"]["USDT"] = "999999"
+    canonical = json.dumps(document, sort_keys=True).encode("utf-8")
+    for field in ("hmac", "sha256"):
+        forged = {**document, field: hashlib.sha256(canonical).hexdigest()}
+        path.write_text(json.dumps(forged), encoding="utf-8")
+        with pytest.raises(StopTheDay, match="HMAC"):
+            load_baseline(path, SECRET)
 
 
 def test_symbol_info_validates_exchange_info():
@@ -367,3 +398,104 @@ def test_reconcile_reads_only_and_uses_baseline_cursors(book):
     assert result.holdings["BTCUSDT"].quantity > 0
     assert ("all_orders", "BTCUSDT", 0) in client.calls and ("my_trades", "SOLUSDT", 0) in client.calls
     assert not any(name.startswith(("new", "cancel", "submit")) for name, *_ in client.calls)
+
+
+# --- revisión de Codex de F2b-2 ------------------------------------------------------
+
+
+def test_duplicate_client_order_id_on_the_exchange_stops(book):
+    exchange = Exchange()
+    filled_book(book, exchange)
+    exchange.fill("BTCUSDT", BUY.client_order_id, "BUY", Decimal("0.01998"),
+                  Decimal("999.00000"), Decimal("0.00001998"))  # mismo id, fills coherentes
+    stop(book, exchange, "más de una vez")
+
+
+@pytest.mark.parametrize(("field", "value"), [("side", "SELL"), ("symbol", "ETHUSDT")])
+def test_side_or_symbol_different_from_the_intent_stops(book, field, value):
+    exchange = Exchange()
+    filled_book(book, exchange)
+    exchange.orders["BTCUSDT"][0][field] = value
+    stop(book, exchange, "símbolo o lado")
+
+
+def record_sell(book, exchange, quantity, day=13, fee="0"):
+    sell = OrderIntent("BTCUSDT", Signal.SELL, DAY.replace(day=day), quantity=float(quantity))
+    exchange.fill("BTCUSDT", sell.client_order_id, "SELL", quantity, quantity * 50000,
+                  Decimal(fee), "USDT")
+    book.append(sell, "INTENT")
+    book.append(sell, "SENT")
+    book.append(sell, "FINAL", "FILLED", float(quantity))
+
+
+def test_sell_without_bot_position_stops(book):
+    exchange = Exchange()
+    exchange.balances["BTC"] = Decimal("1")  # BTC precargado, no del bot
+    baseline = Baseline(BASELINE.since, {**BASE_BALANCES, "BTC": Decimal("1")},
+                        BASELINE.last_order_id, BASELINE.last_trade_id)
+    record_sell(book, exchange, Decimal("0.5"))
+    with pytest.raises(StopTheDay, match="venta sin posición"):
+        reconcile_data(baseline, INFOS, book.records(), **data(exchange))
+
+
+def test_selling_more_than_the_bot_position_stops_even_if_balances_match(book):
+    exchange = Exchange()
+    exchange.balances["BTC"] = Decimal("1")  # el saldo total cuadraría gracias al precargado
+    baseline = Baseline(BASELINE.since, {**BASE_BALANCES, "BTC": Decimal("1")},
+                        BASELINE.last_order_id, BASELINE.last_trade_id)
+    filled_book(book, exchange)
+    record_sell(book, exchange, Decimal("0.5"))
+    with pytest.raises(StopTheDay, match="más de lo poseído"):
+        reconcile_data(baseline, INFOS, book.records(), **data(exchange))
+
+
+def test_buy_over_budget_stops(book):
+    exchange = Exchange()
+    intent = OrderIntent("SOLUSDT", Signal.BUY, DAY, quote_amount=1000.0)
+    exchange.fill("SOLUSDT", intent.client_order_id, "BUY", Decimal("10"), Decimal("1500"),
+                  Decimal("0"), "USDT")
+    book.append(intent, "INTENT")
+    book.append(intent, "SENT")
+    book.append(intent, "FINAL", "FILLED", 10.0)
+    stop(book, exchange, "presupuesto")
+
+
+def test_second_buy_with_open_position_stops(book):
+    exchange = Exchange()
+    filled_book(book, exchange)
+    again = OrderIntent("BTCUSDT", Signal.BUY, DAY.replace(day=14), quote_amount=1.0)
+    exchange.fill("BTCUSDT", again.client_order_id, "BUY", Decimal("0.00002"), Decimal("1"),
+                  Decimal("0"), "USDT")
+    book.append(again, "INTENT")
+    book.append(again, "SENT")
+    book.append(again, "FINAL", "FILLED", 0.00002)
+    stop(book, exchange, "ya abierta")
+
+
+def test_reconcile_data_requires_complete_paginated_history(book):
+    exchange = Exchange()
+    records = filled_book(book, exchange)
+    plain = {**data(exchange), "orders": exchange.orders}  # listas sueltas
+    with pytest.raises(StopTheDay, match="paginación completa"):
+        reconcile_data(BASELINE, INFOS, records, **plain)
+    late = {**data(exchange), "trades": {s: history(exchange.trades[s], "id", 5) for s in SYMBOLS}}
+    with pytest.raises(StopTheDay, match="paginación completa"):
+        reconcile_data(BASELINE, INFOS, records, **late)  # no empieza en la línea base
+    swapped = {**data(exchange), "orders": {s: history(exchange.trades[s], "id") for s in SYMBOLS}}
+    with pytest.raises(StopTheDay, match="paginación completa"):
+        reconcile_data(BASELINE, INFOS, records, **swapped)
+
+
+def test_only_reconciliation_builds_coverage_and_only_fetch_after_builds_history():
+    src = Path(__file__).resolve().parents[1] / "src" / "bottrading"
+    builders = {}
+    for path in src.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for name in ("CoverageProof(", "History("):
+            for match in re.finditer(rf"(?<![\w.])(?<!class ){re.escape(name)}", text):
+                builders.setdefault(name, set()).add(path.name)
+    assert builders["CoverageProof("] == {"demo_reconcile.py"}
+    assert builders["History("] == {"demo_reconcile.py"}
+    text = (src / "demo_reconcile.py").read_text(encoding="utf-8")
+    assert text.count("CoverageProof(frozenset") == 1  # un solo punto: el final de reconcile_data
+    assert text.count("return History(") == 1  # un solo punto: el final de fetch_after

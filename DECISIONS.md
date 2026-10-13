@@ -660,6 +660,12 @@ rest-api/general-api-information, errors, filters):
   saldos precargados de otros activos; se admiten solo si ya estaban en
   la línea base y siguen EXACTAMENTE iguales (tolerancia cero). Una
   comisión en otro activo, un activo nuevo o cualquier cambio detienen.
+- Integridad de la línea base (revisión de Codex de F2b-2): HMAC con una
+  clave derivada del secreto de la credencial demo y creación exclusiva.
+  Al rotar la clave con la aprobación (b), la línea base se vuelve a
+  firmar con un comando aprobado que la verifica antes con la clave
+  anterior (F4). Límite: un proceso del mismo usuario que lea la
+  credencial podría rehacerla; ningún mecanismo local lo impide del todo.
 - Toda orden con prefijo bt- que no esté en el ledger, toda orden ajena
   y toda diferencia de saldo fuera de tolerancia detienen el proceso.
 - El bot no corrige nada por su cuenta. El usuario investiga, se
