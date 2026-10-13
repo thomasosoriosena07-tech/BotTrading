@@ -21,13 +21,20 @@ import hashlib
 import hmac
 import json
 import os
+import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from bottrading.demo_ledger import CoverageProof, OrderLedger, OrderRecord, StopTheDay
+from bottrading.demo_ledger import (
+    CoverageProof,
+    OrderLedger,
+    OrderRecord,
+    StopTheDay,
+    issue_coverage_proof,
+)
 from bottrading.execution import BUDGET_PER_ASSET, DEMO_SYMBOLS, Holding
 
 QUOTE_ASSET = "USDT"
@@ -159,15 +166,23 @@ def load_baseline(path: Path, secret: str) -> Baseline:
 # --- paginación con cursores inclusivos ----------------------------------------------
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class History:
-    """Historial completo de un símbolo tras last_id. Solo lo construye
-    fetch_after (un test estático lo comprueba): reconcile_data no acepta
-    listas sueltas, así que la cobertura procede de una paginación completa."""
+    """Historial completo de un símbolo tras last_id, emitido por fetch_after.
+
+    Procedencia (revisión de Codex): reconcile_data solo acepta los objetos
+    que fetch_after registró al terminar una paginación completa; un History
+    construido a mano se rechaza aunque tenga la clave y el cursor correctos.
+    Dentro del mismo proceso nada es infalsificable: saltárselo exige tocar
+    deliberadamente _ISSUED_HISTORIES (un test estático vigila su uso).
+    """
 
     rows: tuple[Mapping, ...]
     key: str
     after: int
+
+
+_ISSUED_HISTORIES: "weakref.WeakSet[History]" = weakref.WeakSet()
 
 
 def fetch_after(fetch_page: Callable[[int], Sequence[Mapping]], last_id: int,
@@ -183,7 +198,9 @@ def fetch_after(fetch_page: Callable[[int], Sequence[Mapping]], last_id: int,
             raise StopTheDay(f"página que empieza antes del cursor ({key})")
         rows += [row for row in page if row[key] > cursor]
         if len(page) < PAGE_LIMIT:
-            return History(tuple(rows), key, last_id)
+            issued = History(tuple(rows), key, last_id)
+            _ISSUED_HISTORIES.add(issued)
+            return issued
         # Página llena, ordenada, sin repetidos y desde el cursor: ids[-1] > cursor,
         # así que siempre avanza; un servidor que repita la página cae en
         # "antes del cursor" en la siguiente vuelta.
@@ -210,7 +227,8 @@ def reconcile_data(baseline: Baseline, infos: Mapping[str, SymbolInfo],
                          ("id", trades, baseline.last_trade_id))
         for key, histories, last_ids in expected_keys:
             history = histories.get(symbol)
-            if not isinstance(history, History) or history.key != key or \
+            if not isinstance(history, History) or history not in _ISSUED_HISTORIES or \
+                    history.key != key or \
                     history.after != last_ids.get(symbol, 0):
                 raise StopTheDay(f"{symbol}: historial sin paginación completa desde la línea base")
     orders = {s: list(h.rows) for s, h in orders.items()}
@@ -246,7 +264,7 @@ def reconcile_data(baseline: Baseline, infos: Mapping[str, SymbolInfo],
             problems.append(f"{asset}: saldo distinto del esperado")
     if problems:
         raise StopTheDay("reconciliación con discrepancias de saldo: " + "; ".join(problems))
-    return Reconciliation(holdings, CoverageProof(frozenset(DEMO_SYMBOLS), baseline.since, True),
+    return Reconciliation(holdings, issue_coverage_proof(frozenset(DEMO_SYMBOLS), baseline.since),
                           actual)
 
 
@@ -315,18 +333,23 @@ def _holding(info: SymbolInfo, orders: Sequence[Mapping],
     """
     sides = {o["orderId"]: o.get("side") for o in orders}
     cash, quantity, cost = Decimal(str(BUDGET_PER_ASSET)), Decimal(0), Decimal(0)
-    order_start: dict[int, Decimal] = {}  # cantidad poseída antes de cada orden
+    order_start: dict[int, tuple[Decimal, Decimal]] = {}  # (cantidad, efectivo) antes
+    order_quote: dict[int, Decimal] = {}  # USDT gastados por cada compra (todos sus fills)
     problems = []
     for trade in sorted(trades, key=lambda t: t["id"]):
         qty, quote = _decimal(trade["qty"], "qty"), _decimal(trade["quoteQty"], "quoteQty")
         fee = _decimal(trade["commission"], "commission")
-        start_qty = order_start.setdefault(trade["orderId"], quantity)
+        start_qty, start_cash = order_start.setdefault(trade["orderId"], (quantity, cash))
         if sides.get(trade["orderId"]) == "BUY":
             if start_qty >= info.step_size:
                 problems.append(f"{info.symbol}: compra con una posición ya abierta")
             if start_qty < info.step_size and quantity == start_qty:
                 cost = Decimal(0)  # primer fill de una nueva posición
             cash, quantity, cost = cash - quote, quantity + qty, cost + quote
+            spent = order_quote[trade["orderId"]] = order_quote.get(trade["orderId"], 0) + quote
+            if spent > min(start_cash, Decimal(str(BUDGET_PER_ASSET))):
+                # revisión de Codex: tope min(efectivo, 1000) por compra (D030)
+                problems.append(f"{info.symbol}: compra mayor que min(efectivo, presupuesto)")
         else:
             if start_qty < info.step_size:
                 problems.append(f"{info.symbol}: venta sin posición del bot")

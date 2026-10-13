@@ -18,6 +18,7 @@ from bottrading.demo_ledger import (
     adjudicate_not_sent,
     default_ledger_path,
     execute_intent,
+    issue_coverage_proof,
     resolve,
 )
 from bottrading.execution import OrderIntent
@@ -28,7 +29,7 @@ BUY = OrderIntent("BTCUSDT", Signal.BUY, DAY, quote_amount=1000.0)
 SELL = OrderIntent("ETHUSDT", Signal.SELL, DAY, quantity=0.5)
 FILLED = OrderStatus("FILLED", 0.0123)
 CLOCK = lambda: datetime(2026, 10, 13, 0, 5, tzinfo=timezone.utc)  # noqa: E731
-COVERAGE = CoverageProof(frozenset({"BTCUSDT", "ETHUSDT", "SOLUSDT"}), date(2026, 10, 1), True)
+COVERAGE = issue_coverage_proof(frozenset({"BTCUSDT", "ETHUSDT", "SOLUSDT"}), date(2026, 10, 1))
 
 
 class FakeExchange:
@@ -333,9 +334,9 @@ def test_adjudication_requires_approval_coverage_and_absence(book):
         adjudicate_not_sent(book, exchange, BUY.client_order_id, " ", COVERAGE, no_sleep)
     bad_coverage = [
         True,  # un booleano suelto no es una prueba
-        CoverageProof(COVERAGE.symbols, COVERAGE.since, False),
-        CoverageProof(frozenset({"ETHUSDT"}), COVERAGE.since, True),
-        CoverageProof(COVERAGE.symbols, date(2026, 10, 13), True),  # empieza después
+        CoverageProof(COVERAGE.symbols, COVERAGE.since, True),  # fabricada a mano: no emitida
+        issue_coverage_proof(frozenset({"ETHUSDT"}), COVERAGE.since),
+        issue_coverage_proof(COVERAGE.symbols, date(2026, 10, 13)),  # empieza después
     ]
     for coverage in bad_coverage:
         with pytest.raises(StopTheDay, match="cobertura"):

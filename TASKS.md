@@ -664,3 +664,15 @@ readme.md. Solo lectura y sin red en las pruebas (cliente falso).
   clave y cursor comprobados); un test estático verifica que CoverageProof
   y History solo se construyen en esos dos puntos. Corregida también una
   prueba propia que vendía más de lo poseído. 552 passed.
+- Revisión de Codex de d595d13 (transmitida por el usuario): requiere
+  cambios. Corregido: (P1) procedencia en ejecución: reconcile_data solo
+  acepta los History EMITIDOS por fetch_after y adjudicate_not_sent solo
+  las CoverageProof EMITIDAS por issue_coverage_proof (registros de
+  identidades con WeakSet; eq=False); un objeto construido a mano se
+  rechaza aunque tenga los mismos campos. Límite documentado: dentro de un
+  proceso de Python nada es infalsificable; saltárselo exige usar a
+  propósito los registros privados, y el test estático vigila quién los
+  usa. (P1) _holding limita cada compra (suma de sus fills) a
+  min(efectivo al empezar la orden, 1000), también tras una venta con
+  ganancia. Pruebas: History fabricado, CoverageProof fabricada, compra de
+  1000 / 1000,01 / 1150 tras una venta con ganancia en dos fills.

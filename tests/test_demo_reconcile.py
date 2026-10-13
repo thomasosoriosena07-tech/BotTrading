@@ -15,6 +15,7 @@ from bottrading.demo_ledger import (
     StopTheDay,
     adjudicate_not_sent,
     execute_intent,
+    is_issued_coverage_proof,
 )
 from bottrading.demo_reconcile import (
     PAGE_LIMIT,
@@ -129,7 +130,10 @@ def test_clean_account_reconciles_and_gives_holdings_and_coverage(book):
     assert btc.quantity == pytest.approx(0.01998 - 0.00001998)
     assert btc.cost == pytest.approx(999.0)
     assert result.holdings["ETHUSDT"].quantity == 0 and result.holdings["ETHUSDT"].cash == 1000.0
-    assert result.coverage == CoverageProof(frozenset(SYMBOLS), date(2026, 10, 1), True)
+    coverage = result.coverage
+    assert (coverage.symbols, coverage.since, coverage.complete) == \
+        (frozenset(SYMBOLS), date(2026, 10, 1), True)
+    assert is_issued_coverage_proof(coverage)
     # alimenta check_limits con already_today del MISMO registro (cautela de Codex en F1)
     with pytest.raises(Exception, match="por símbolo"):
         check_limits([OrderIntent("BTCUSDT", Signal.SELL, DAY, quantity=btc.quantity)],
@@ -486,16 +490,63 @@ def test_reconcile_data_requires_complete_paginated_history(book):
         reconcile_data(BASELINE, INFOS, records, **swapped)
 
 
-def test_only_reconciliation_builds_coverage_and_only_fetch_after_builds_history():
+def test_only_reconciliation_issues_coverage_and_only_fetch_after_issues_history():
+    # Control estático complementario del registro de identidades.
     src = Path(__file__).resolve().parents[1] / "src" / "bottrading"
-    builders = {}
+    uses = {}
     for path in src.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for name in ("CoverageProof(", "History("):
-            for match in re.finditer(rf"(?<![\w.])(?<!class ){re.escape(name)}", text):
-                builders.setdefault(name, set()).add(path.name)
-    assert builders["CoverageProof("] == {"demo_reconcile.py"}
-    assert builders["History("] == {"demo_reconcile.py"}
-    text = (src / "demo_reconcile.py").read_text(encoding="utf-8")
-    assert text.count("CoverageProof(frozenset") == 1  # un solo punto: el final de reconcile_data
-    assert text.count("return History(") == 1  # un solo punto: el final de fetch_after
+        for name in ("CoverageProof(", "History(", "issue_coverage_proof(",
+                     "_ISSUED_PROOFS", "_ISSUED_HISTORIES"):
+            count = len(re.findall(rf"(?<![\w.])(?<!class )(?<!def ){re.escape(name)}", text))
+            if count:
+                uses.setdefault(name, {})[path.name] = count
+    assert uses["CoverageProof("] == {"demo_ledger.py": 1}  # dentro de issue_coverage_proof
+    assert uses["issue_coverage_proof("] == {"demo_reconcile.py": 1}  # final de reconcile_data
+    assert uses["History("] == {"demo_reconcile.py": 1}  # final de fetch_after
+    assert set(uses["_ISSUED_PROOFS"]) == {"demo_ledger.py"}
+    assert set(uses["_ISSUED_HISTORIES"]) == {"demo_reconcile.py"}
+
+
+def test_hand_built_history_is_refused_even_with_correct_key_and_cursor(book):
+    # Revisión de Codex: un History fabricado (p. ej. sin filas) no acredita cobertura.
+    exchange = Exchange()
+    records = filled_book(book, exchange)
+    forged = {**data(exchange), "trades": {s: History((), "id", 0) for s in SYMBOLS}}
+    with pytest.raises(StopTheDay, match="paginación completa"):
+        reconcile_data(BASELINE, INFOS, records, **forged)
+
+
+def profitable_round_trip(book, exchange):
+    filled_book(book, exchange)  # compra 0.01998 BTC por 999 USDT, comisión en BTC
+    sold = Decimal("0.01996")
+    exchange.fill("BTCUSDT", "bt-BTCUSDT-20261013-S", "SELL", sold, Decimal("1200"),
+                  Decimal("0"), "USDT")  # venta con ganancia: efectivo 1201
+    sell = OrderIntent("BTCUSDT", Signal.SELL, DAY.replace(day=13), quantity=float(sold))
+    for event, status in (("INTENT", None), ("SENT", None), ("FINAL", "FILLED")):
+        book.append(sell, event, status, float(sold) if status else None)
+
+
+@pytest.mark.parametrize(("spent", "ok"), [("1000", True), ("1000.01", False), ("1150", False)])
+def test_buy_after_a_profitable_sell_is_capped_at_the_budget(book, spent, ok):
+    # Revisión de Codex: tras ganar, el efectivo (1201) no amplía el tope de 1000.
+    exchange = Exchange()
+    profitable_round_trip(book, exchange)
+    rebuy = OrderIntent("BTCUSDT", Signal.BUY, DAY.replace(day=14), quote_amount=1000.0)
+    half = Decimal(spent) / 2  # en dos fills de la misma orden
+    for fill_quote in (half, Decimal(spent) - half):
+        exchange.fill("BTCUSDT", rebuy.client_order_id, "BUY", Decimal("0.01"), fill_quote,
+                      Decimal("0"), "USDT")
+    second = exchange.orders["BTCUSDT"].pop()  # dos fills, una sola orden
+    first = exchange.orders["BTCUSDT"][-1]
+    first["executedQty"] = "0.02"
+    first["cummulativeQuoteQty"] = str(Decimal(spent))
+    exchange.trades["BTCUSDT"][-1]["orderId"] = first["orderId"]
+    assert second["clientOrderId"] == first["clientOrderId"]
+    for event, status in (("INTENT", None), ("SENT", None), ("FINAL", "FILLED")):
+        book.append(rebuy, event, status, 0.02 if status else None)
+    if ok:
+        holding = reconcile_data(BASELINE, INFOS, book.records(), **data(exchange)).holdings
+        assert holding["BTCUSDT"].cost == pytest.approx(1000.0)
+    else:
+        stop(book, exchange, "min\\(efectivo, presupuesto\\)")

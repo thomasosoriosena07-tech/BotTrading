@@ -28,6 +28,7 @@ import io
 import os
 import sys
 import time
+import weakref
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -408,15 +409,36 @@ def _store(ledger: OrderLedger, intent: OrderIntent, status: OrderStatus,
     return ledger.record(intent.client_order_id)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class CoverageProof:
     """Resultado de la reconciliación (F2b-2): historial de órdenes y fills
     de `symbols` revisado por completo desde `since`. No es un booleano suelto
-    (revisión de Codex): debe cubrir el símbolo y el día de la orden."""
+    (revisión de Codex): debe cubrir el símbolo y el día de la orden.
+
+    Procedencia: adjudicate_not_sent solo acepta los objetos EMITIDOS por
+    issue_coverage_proof (registro de identidades); uno construido a mano se
+    rechaza. Dentro de un mismo proceso de Python nada es infalsificable:
+    saltárselo exigiría usar deliberadamente esa función, y un test estático
+    comprueba que solo la llama demo_reconcile.py.
+    """
 
     symbols: frozenset[str]
     since: date
     complete: bool
+
+
+_ISSUED_PROOFS: "weakref.WeakSet[CoverageProof]" = weakref.WeakSet()
+
+
+def issue_coverage_proof(symbols: frozenset[str], since: date) -> CoverageProof:
+    """Solo para demo_reconcile, al final de una reconciliación completa."""
+    proof = CoverageProof(frozenset(symbols), since, True)
+    _ISSUED_PROOFS.add(proof)
+    return proof
+
+
+def is_issued_coverage_proof(proof: object) -> bool:
+    return isinstance(proof, CoverageProof) and proof in _ISSUED_PROOFS
 
 
 def adjudicate_not_sent(ledger: OrderLedger, gateway: Gateway, client_order_id: str,
@@ -434,7 +456,7 @@ def adjudicate_not_sent(ledger: OrderLedger, gateway: Gateway, client_order_id: 
         raise StopTheDay(f"{client_order_id}: no hay nada que adjudicar")
     if not approval.strip():
         raise StopTheDay("la adjudicación requiere la aprobación explícita del usuario")
-    if not (isinstance(coverage, CoverageProof) and coverage.complete
+    if not (is_issued_coverage_proof(coverage) and coverage.complete
             and record.intent.symbol in coverage.symbols
             and coverage.since <= record.intent.signal_time.date()):
         raise StopTheDay("la adjudicación requiere cobertura completa de la reconciliación "
