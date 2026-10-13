@@ -100,6 +100,22 @@ Panel visual: abrir `paper/dashboard.html` en el navegador (se regenera
 en cada ejecución; funciona sin internet).
 Puntos de control: 2027-03-31 y 2027-09-30.
 
+### Cuenta demo de Binance (D030, solo lectura)
+Fase experimental: valida la ejecución, no la rentabilidad. No envía
+órdenes (requiere una aprobación posterior) ni toca `paper/`.
+
+1. En Binance: *Demo Trading* -> *API Management*, crea una clave de
+   **solo lectura** (sin permiso TRADE) en una cuenta demo **dedicada**.
+2. Guárdala en Windows sin que quede en el historial de la consola:
+   `cmdkey /generic:BotTrading-Demo /user:bottrading /pass` y pega
+   `APIKEY:SECRET` cuando lo pida. No la compartas con nadie.
+3. Comprobación: `python -m bottrading.demo_client check`
+4. Línea base (pide escribir INICIALIZAR): `python -m bottrading.demo_client init`
+5. Reconciliación: `python -m bottrading.demo_client reconcile`
+
+El estado privado vive en `%LOCALAPPDATA%\BotTrading\demo\`, fuera del
+repositorio. Crear el archivo `STOP` en esa carpeta activa el kill switch.
+
 ## Arquitectura
 
 Paquete `src/bottrading/`, un módulo por responsabilidad:

@@ -15,8 +15,14 @@ Secretos (D030, punto 6): la credencial se lee del Administrador de
 credenciales de Windows solo al firmar; nunca se registra, se guarda en
 archivos ni aparece en mensajes de error (solo método, ruta, código
 HTTP y código de Binance).
+
+Uso (F3, solo lectura; ver D030):
+    python -m bottrading.demo_client check      # credencial, hora, símbolos, cuenta
+    python -m bottrading.demo_client init       # fija línea base y registro (confirmación)
+    python -m bottrading.demo_client reconcile  # reconcilia cuenta y registro
 """
 
+import argparse
 import ctypes
 import hashlib
 import hmac
@@ -29,9 +35,24 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
+from pathlib import Path
 
+from bottrading.demo_ledger import (
+    LedgerIntegrityError,
+    OrderLedger,
+    StopTheDay,
+    default_ledger_path,
+)
+from bottrading.demo_reconcile import (
+    load_baseline,
+    reconcile,
+    save_baseline,
+    symbol_info,
+    take_baseline,
+)
 from bottrading.execution import DEMO_SYMBOLS
 
 logger = logging.getLogger(__name__)
@@ -423,3 +444,111 @@ def _error_code(body: bytes) -> int | None:
     except (ValueError, AttributeError):
         return None
     return code if isinstance(code, int) else None
+
+
+# --- línea de comandos (F3, solo lectura) --------------------------------------------
+
+MAX_CLOCK_SKEW_MS = 1000  # Binance rechaza marcas >= 1 s por delante del servidor
+CONFIRMATION_WORD = "INICIALIZAR"
+
+
+@dataclass(frozen=True)
+class DemoPaths:
+    ledger: Path
+    baseline: Path
+    kill_switch: Path
+
+    @classmethod
+    def default(cls) -> "DemoPaths":
+        ledger = default_ledger_path()
+        return cls(ledger, ledger.with_name("baseline.json"), ledger.with_name("STOP"))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m bottrading.demo_client",
+        description="Cuenta Binance Spot DEMO, solo lectura (D030). No envía órdenes.")
+    parser.add_argument("command", choices=("check", "init", "reconcile"))
+    return parser
+
+
+def main(argv: Sequence[str] | None = None, *,
+         credentials: Callable[[], Credentials] = read_windows_credential,
+         transport: Transport = urllib_transport,
+         clock: Callable[[], float] = time.time,
+         paths: DemoPaths | None = None,
+         ask: Callable[[str], str] = input,
+         out: Callable[[str], None] = print) -> int:
+    """0 si todo está bien; 1 si hay que detenerse. Nunca muestra claves."""
+    command = build_parser().parse_args(argv).command
+    failure = None
+    try:
+        paths = paths or DemoPaths.default()
+        client = DemoClient(credentials, transport, clock)
+        handler = {"check": _check, "init": _init, "reconcile": _reconcile}[command]
+        return handler(client, credentials, clock, paths, ask, out)
+    except (DemoClientError, StopTheDay, LedgerIntegrityError) as error:
+        failure = str(error)  # mensajes saneados: sin claves, query ni cuerpo
+    out(f"DETENIDO: {failure}")
+    return 1
+
+
+def _check(client, credentials, clock, paths, ask, out) -> int:
+    credentials()  # solo comprueba que existe y tiene formato; no se muestra
+    out("Credencial demo: presente (valor oculto)")
+    server_ms = client.server_time()
+    skew = int(clock() * 1000) - server_ms
+    out(f"Hora: desfase con el servidor {skew} ms")
+    if abs(skew) >= MAX_CLOCK_SKEW_MS:
+        raise StopTheDay(f"reloj desfasado {skew} ms: sincroniza la hora de Windows")
+    for symbol in DEMO_SYMBOLS:
+        info = symbol_info(client.exchange_info(symbol), symbol)
+        out(f"{symbol}: activo base {info.base_asset}, stepSize {info.step_size}")
+    account = client.account()
+    assets = sorted(b["asset"] for b in account.get("balances", []))
+    out(f"Cuenta: {len(assets)} activos con saldo ({', '.join(assets)}); "
+        f"canTrade de la CUENTA = {account.get('canTrade')} "
+        "(el permiso de la CLAVE se comprueba en la web: debe ser solo lectura)")
+    out(f"Kill switch ({paths.kill_switch.name}): "
+        f"{'ACTIVO' if paths.kill_switch.exists() else 'inactivo'}")
+    if not paths.ledger.exists() and not paths.baseline.exists():
+        out("Registro y línea base: sin inicializar (siguiente paso: init)")
+        return 0
+    return _reconcile(client, credentials, clock, paths, ask, out)
+
+
+def _init(client, credentials, clock, paths, ask, out) -> int:
+    """Fija la línea base y crea el registro vacío: solo con confirmación explícita."""
+    if paths.ledger.exists() or paths.ledger.with_name("orders.state").exists() \
+            or paths.baseline.exists():
+        raise StopTheDay("ya inicializado: una nueva línea base requiere --rebaseline aprobado")
+    today = datetime.fromtimestamp(clock(), timezone.utc).date()
+    baseline = take_baseline(client, today)
+    out(f"Línea base propuesta ({today}):")
+    for asset, amount in sorted(baseline.balances.items()):
+        out(f"  {asset}: {amount}")
+    out(f"  Último orderId por símbolo: {baseline.last_order_id}")
+    out("Esto fija el punto de partida de la cuenta demo DEDICADA (D030). A partir de")
+    out("ahora no debe haber operaciones manuales ni otros bots en esa cuenta.")
+    if ask(f"Escribe {CONFIRMATION_WORD} para confirmar: ").strip() != CONFIRMATION_WORD:
+        out("Cancelado: no se ha guardado nada.")
+        return 1
+    save_baseline(paths.baseline, baseline, credentials().secret)
+    OrderLedger(paths.ledger, create=True).close()
+    out(f"Inicializado: línea base y registro en {paths.ledger.parent}")
+    return 0
+
+
+def _reconcile(client, credentials, clock, paths, ask, out) -> int:
+    baseline = load_baseline(paths.baseline, credentials().secret)
+    with OrderLedger(paths.ledger) as ledger:
+        result = reconcile(client, ledger, baseline)
+    out(f"Reconciliación: OK (cobertura desde {result.coverage.since})")
+    for symbol, holding in sorted(result.holdings.items()):
+        out(f"  {symbol}: efectivo {holding.cash:.2f} USDT, cantidad {holding.quantity}, "
+            f"coste {holding.cost:.2f}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

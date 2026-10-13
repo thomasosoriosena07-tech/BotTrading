@@ -65,7 +65,8 @@ holdout final, que se evalúa una sola vez (T017).
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
-  y revisados. F2b-1 y F2b-2 cerrados. F2b-3 (guarda
+  y revisados. F2b-1 y F2b-2 cerrados. F3 (comandos) hecho, pendiente de
+  Codex y de la primera conexión real con aprobación. F2b-3 (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -681,3 +682,20 @@ readme.md. Solo lectura y sin red en las pruebas (cliente falso).
   no son una barrera contra código malicioso en el mismo proceso). 556
   passed. Siguiente: F2b-3 tras verificar la primera ejecución automática
   de paper (2026-10-14).
+
+## Registro T021 F3, comandos (Claude Code, 2026-10-13)
+Archivos: src/bottrading/demo_client.py (línea de comandos al final del
+módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
+(nuevo), readme.md. Sin red en las pruebas; aún no se ha conectado a Binance.
+- check: credencial presente (valor oculto), desfase con el servidor
+  (>= 1000 ms detiene), stepSize de los tres símbolos, activos con saldo y
+  canTrade de la CUENTA (el permiso de la CLAVE se verifica en la web),
+  estado del kill switch (STOP) y, si ya hay línea base, reconciliación.
+- init: solo si no existen registro ni línea base; muestra la línea base
+  propuesta y exige escribir INICIALIZAR; guarda la línea base con HMAC y
+  crea el registro con create=True (único punto que lo hace, como pidió
+  Codex en F2b-1).
+- reconcile: carga la línea base (HMAC), abre el registro con bloqueo y
+  reconcilia; muestra efectivo, cantidad y coste por activo.
+- Salida: 0 si todo está bien, 1 con "DETENIDO: <motivo>"; nunca claves,
+  query firmada ni cuerpos. Todas las peticiones son GET. 565 passed.
