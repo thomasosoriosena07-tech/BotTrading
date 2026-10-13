@@ -137,8 +137,9 @@ def test_cli_reports_checksum_mismatch(tmp_path, capsys):
 # importa librerías de red, el descargador, ni importa código dinámicamente.
 NETWORK_GUARD = re.compile(
     r"^\s*(import|from)\s+(urllib|http|socket|ssl|requests|httpx|aiohttp|"
-    r"websocket|websockets|bottrading\.download|bottrading\.demo_client)\b"
+    r"websocket|websockets|ctypes|subprocess|bottrading\.download|bottrading\.demo_client)\b"
     r"|^\s*from\s+bottrading\s+import\s+.*\b(download|demo_client)\b"
+    r"|\bos\.(system|popen|exec\w*|spawn\w*)\b"
     r"|\b(__import__|importlib)\b",
     re.M,
 )
@@ -189,7 +190,8 @@ def test_network_guard_detects_offenders():
                "from bottrading.download import fetch_url",
                "from bottrading import download", "x = __import__('ssl')",
                "from bottrading.demo_client import DemoClient",
-               "from bottrading import demo_client"]
+               "from bottrading import demo_client", "import ctypes",
+               "from ctypes import wintypes", "import subprocess", "os.system('curl x')"]
     assert all(NETWORK_GUARD.search(sample) for sample in samples)
     assert not NETWORK_GUARD.search("from bottrading.data import Candle")
 

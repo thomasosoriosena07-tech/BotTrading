@@ -147,6 +147,33 @@ def test_altered_requests_are_refused(method, mutate):
         validate_request(method, mutate(signed_url()), verify)
 
 
+@pytest.mark.parametrize("mutate", [
+    lambda u: tamper(u, "/api/v3/allOrders", "/api/v3/all\nOrders"),
+    lambda u: tamper(u, "/api/v3/allOrders", "/api/v3/all\tOrders"),
+    lambda u: " " + u,
+    lambda u: u + " ",
+    lambda u: u + "\r\n",
+    lambda u: tamper(u, "demo-api", "demo-аpi"),  # 'a' cirílica
+])
+def test_whitespace_control_and_non_ascii_characters_are_refused(mutate):
+    # urlsplit los eliminaría y validaría un texto distinto del enviado.
+    with pytest.raises(RequestRefused, match="caracteres"):
+        validate_request("GET", mutate(signed_url()), verify)
+
+
+def test_transport_revalidates_requests_not_built_by_prepare(monkeypatch):
+    def no_opener():
+        raise AssertionError("no debía construirse el opener")
+    monkeypatch.setattr(demo, "build_opener", no_opener)
+    good = prepared()
+    for url in (good.url.replace("demo-api.binance.com", "api.binance.com"),
+                good.url + "&extra=1", "https://demo-api.binance.com/sapi/v1/account"):
+        with pytest.raises(RequestRefused):
+            urllib_transport(PreparedRequest("GET", url, "/x", True), {})
+    with pytest.raises(RequestRefused):
+        urllib_transport(PreparedRequest("POST", good.url, good.path, True), {})
+
+
 def test_signature_must_be_last_and_verified():
     url = signed_url()
     base, signature = url.split("&signature=")

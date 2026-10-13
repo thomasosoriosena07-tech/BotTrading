@@ -552,3 +552,9 @@ prueba llama a Binance; el transporte real no se ha ejecutado.
   hosts de producción en src/ (con prueba de que la expresión los detecta)
   y test de que download.py no lee credenciales.
 - 471 passed, 0 skipped; paper/ sin cambios.
+- Autorrevisión de Claude Code (NO es la revisión de Codex, que sigue
+  pendiente): validate_request rechaza espacios, caracteres de control y no
+  ASCII (urlsplit los eliminaba y validaba un texto distinto del enviado);
+  urllib_transport revalida la estructura de toda petición aunque no venga
+  de prepare(); la guarda estática vigila además ctypes, subprocess y
+  os.system/popen/exec/spawn fuera de los dos módulos de red. 478 passed.

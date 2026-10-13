@@ -139,6 +139,10 @@ def validate_request(method: str, url: str,
     `verify_signature(payload, signature)` recalcula la firma para detectar
     una query alterada después de firmar.
     """
+    # urlsplit elimina \n, \t y espacios: se rechazan antes para que lo
+    # validado sea exactamente lo que se enviaría.
+    if not re.fullmatch(r"[\x21-\x7e]+", url):
+        raise RequestRefused("URL con espacios, caracteres de control o no ASCII")
     parts = urllib.parse.urlsplit(url)
     if parts.scheme != "https":
         raise RequestRefused("esquema no permitido")
@@ -265,7 +269,12 @@ def build_opener() -> urllib.request.OpenerDirector:
 
 
 def urllib_transport(request: PreparedRequest, headers: Mapping[str, str]) -> Response:
-    """Transporte real. Solo se usa en F3 en adelante; las pruebas lo sustituyen."""
+    """Transporte real. Solo se usa en F3 en adelante; las pruebas lo sustituyen.
+
+    Defensa adicional: revalida la estructura de la petición aunque no
+    venga de DemoClient.prepare (la firma ya se verificó al prepararla).
+    """
+    validate_request(request.method, request.url, _structure_only)
     http_request = urllib.request.Request(request.url, method=request.method,
                                           headers={**headers, "User-Agent": "bottrading-educativo"})
     try:
@@ -275,6 +284,11 @@ def urllib_transport(request: PreparedRequest, headers: Mapping[str, str]) -> Re
         return Response(exc.code, exc.read() or b"", request.url, _retry_after(exc.headers))
     except OSError:  # URLError, timeouts y cortes: sin respuesta; detalle omitido
         raise DemoApiError(request.method, request.path, None) from None
+
+
+def _structure_only(payload: str, signature: str) -> bool:
+    """Para la revalidación del transporte: sin secreto no se puede recalcular."""
+    return True
 
 
 def _retry_after(headers) -> int | None:
