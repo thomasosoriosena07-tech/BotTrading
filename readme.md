@@ -61,14 +61,19 @@ con fechas ISO 8601 con zona horaria o epoch en milisegundos
 
 ### Datos históricos de Binance
 
-Descargar a mano los ZIP de klines (y sus `.CHECKSUM`) desde
-data.binance.vision (Spot → monthly → klines → símbolo → intervalo) y
-guardarlos en `data/` (ignorada por Git). Después:
+Descargar los klines mensuales públicos (verificados con su `.CHECKSUM`)
+a `data/BTCUSDT-1d/` (ignorada por Git):
 
-    python -m bottrading --binance data --fast 24 --slow 72
+    python -m bottrading.download --symbol BTCUSDT --interval 1d --start 2020-01
+
+También se pueden descargar a mano desde data.binance.vision (Spot →
+monthly → klines → símbolo → intervalo). Después:
+
+    python -m bottrading --binance data/BTCUSDT-1d --fast 20 --slow 50
 
 `--binance` acepta carpetas o archivos `.zip`/`.csv`. Se verifica el
-`.CHECKSUM` de cada ZIP cuando existe. No se usan claves API ni red.
+`.CHECKSUM` de cada ZIP cuando existe. El backtest no usa red;
+solo el descargador accede a data.binance.vision, sin claves API.
 
 ## Arquitectura
 
@@ -79,6 +84,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `config.py` | `BacktestConfig`: capital, comisión, slippage, tamaño de posición |
 | `data.py` | Carga y validación del CSV OHLCV, normalización a UTC |
 | `binance.py` | Importación de klines de Binance (ZIP/CSV, checksum) |
+| `download.py` | Descarga de klines públicos (único módulo con red) |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |

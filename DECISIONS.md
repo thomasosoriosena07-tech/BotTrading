@@ -182,8 +182,9 @@ revisión de Codex.
 - Se mantienen D001 y D006: sin órdenes reales ni claves API.
 - Datos reales: CSV públicos de Binance descargados a mano por el
   usuario; no se versionan (data/ sigue ignorado).
-- Acceso a red (solo T019, datos públicos de mercado): requiere una
-  aprobación específica antes de implementarlo.
+- Acceso a red: solo el descargador de datos históricos públicos
+  (D019, aprobado por el usuario) y, en el futuro, T019 (requiere otra
+  aprobación específica).
 - Riesgo asumido: aunque un resultado out-of-sample sea bueno, no
   garantiza rentabilidad futura; se informará siempre así.
 - Tras la revisión de Codex: el walk-forward usado para elegir es
@@ -208,6 +209,27 @@ Estado: Aprobada (diseño revisado por Codex en el plan de la fase 2)
 - `.CHECKSUM` junto al archivo: si existe y no coincide, error; si
   falta en un ZIP, aviso en el log y "sin .CHECKSUM" en el informe.
 - La vela usa open_time como timestamp (inicio de la vela).
+
+## D019 — Descargador de datos públicos de Binance
+Estado: Aprobada por el usuario ("sí al script de descarga", 2026-10-13)
+
+- src/bottrading/download.py es el ÚNICO módulo con acceso a red. Una
+  guarda ESTÁTICA (prueba) falla si otro módulo importa librerías de
+  red, el descargador o usa importación dinámica. No es un límite de
+  seguridad: no cubre todas las formas posibles de acceder a la red.
+- Solo GET HTTPS a data.binance.vision/data/spot/monthly/klines/...
+  (URL base fija). Las redirecciones solo se siguen si el destino es
+  HTTPS en data.binance.vision (puerto 443, sin credenciales en el
+  URL); la URL final de la respuesta se vuelve a comprobar. Sin cuenta,
+  claves API ni órdenes.
+- Cada ZIP se verifica con su .CHECKSUM antes de guardarse; si no
+  coincide, no se guarda y el proceso termina con error. Escritura
+  atómica (.part + rename). Archivos ya verificados no se vuelven a
+  descargar. Pausa de 0,2 s entre meses.
+- Solo meses cerrados. Meses inexistentes (404) se informan como
+  "no disponible", sin error.
+- Destino por defecto data/<SYMBOL>-<interval>/ (ignorado por Git).
+- Las pruebas usan un servidor falso en memoria: ninguna usa la red.
 
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.

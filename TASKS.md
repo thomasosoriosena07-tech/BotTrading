@@ -26,6 +26,7 @@ holdout final, que se evalúa una sola vez (T017).
   validación que load_ohlcv_csv; close_time > open_time; duplicados
   entre archivos con archivo:línea; verifica `.CHECKSUM` si existe.
   Pruebas con archivos sintéticos con ese formato (sin red).
+- [x] T013b — Descargador de klines públicos (aprobado por el usuario, D019).
 - [ ] T014 — Particiones temporales.
   Aceptación: holdout final = último ~20 % (>= 1 año natural si se
   publican métricas anualizadas; si no alcanza, la muestra se declara
@@ -260,3 +261,22 @@ revisión de Codex (holdout final separado; D017 ampliada).
   nota pendiente de DECISIONS actualizada -> 213 passed.
 - Para T014 los datos no bastan: 3 meses horarios < 6 meses de ajuste
   inicial + 5 ventanas de 1 mes + holdout.
+
+## Registro T013b (Claude Code, 2026-10-13)
+Archivos: src/bottrading/download.py y tests/test_download.py (nuevos),
+readme.md, DECISIONS.md (D017 actualizada, D019).
+- 16 pruebas con servidor falso (sin red), incluida la guarda de que
+  ningún otro módulo importa librerías de red.
+- Descarga real: `python -m bottrading.download --symbol BTCUSDT
+  --interval 1d --start 2020-01 --end 2026-09` -> 81 descargados,
+  checksums verificados. Carga: 2465 velas diarias 2020-01-01 a
+  2026-09-30, 0 huecos. Segunda ejecución: "ya presente".
+- `.venv\Scripts\python -m pytest -q` -> 229 passed.
+- Datos suficientes para el diseño diario de T014 (6,75 años).
+- Revisión Codex: "requiere cambios menores". Corregido: redirecciones
+  restringidas a HTTPS en data.binance.vision y URL final comprobada;
+  guarda de red ampliada (más librerías, import del descargador,
+  importación dinámica) y documentada como estática; la prueba de
+  checksum incorrecto exige que no se cree nada. Descarga real de un
+  mes a un directorio temporal tras el cambio -> OK.
+  `.venv\Scripts\python -m pytest -q` -> 243 passed.
