@@ -64,8 +64,8 @@ holdout final, que se evalúa una sola vez (T017).
   BLOQUEADA hasta aprobar el acceso a red (D017): sin claves ni
   órdenes; las pruebas siguen sin red.
 - [~] T021 — Integración futura con Binance Spot Demo Mode (D030).
-  F0 (documento D030) hecho y revisado. F1 hecho; pendiente de revisión
-  de Codex. Lectura de
+  F0 (documento D030) y F1 (capa local) hechos y revisados. Siguiente:
+  F2a (sin red). Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
@@ -523,3 +523,9 @@ tests/test_execution.py (nuevo), readme.md. paper.py sin cambios. Sin red.
   alcance (no es aislamiento) queda escrito en conftest.py. Importar
   _buy/_sell/_validate_inputs se mantiene como provisional (aceptado por
   Codex) hasta una interfaz pública común. 404 passed, 0 skipped.
+
+- Revisión de Codex de 7ba2381 (transmitida por el usuario): F1 CERRADO;
+  se puede empezar F2a. 404 passed; paper/ intacto. Cautela para F2b:
+  already_today y holdings deben salir del MISMO ledger reconciliado
+  (una compra registrada con posición aún plana cuenta como exposición
+  pendiente; si ledger y holdings discrepan, el llamador debe detenerse).
