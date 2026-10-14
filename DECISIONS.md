@@ -819,8 +819,10 @@ Fases (T021)
 
 F4 (aprobación (b), 2026-10-13):
 - POST y DELETE /api/v3/order entran en la tabla cerrada; solo un DemoClient
-  creado con trading=True puede prepararlos, y solo `run --send-orders` con
-  BOTTRADING_DEMO_ORDERS=1 lo crea. Solo MARKET; compra por quoteOrderQty
+  con un OrderConsent EMITIDO por grant_order_consent puede prepararlos, y
+  solo main() lo emite, con `run --send-orders` y BOTTRADING_DEMO_ORDERS=1
+  (la variable se vuelve a comprobar en cada envío; un permiso fabricado a
+  mano se rechaza; revisión de Codex). Solo MARKET; compra por quoteOrderQty
   (céntimos, hacia abajo), venta por quantity (stepSize, hacia abajo).
 - Posición objetivo = estado de la estrategia congelada (última señal BUY o
   SELL con velas cerradas hasta ayer). La intención usa la fecha de esa señal:

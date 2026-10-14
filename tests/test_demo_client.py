@@ -240,7 +240,7 @@ def test_unknown_or_write_endpoints_are_refused_before_signing():
 
 def test_client_is_read_only_by_default():
     # F4 (aprobación (b) de D030): las únicas escrituras son POST y DELETE de
-    # /api/v3/order, y solo un cliente creado con trading=True puede prepararlas.
+    # /api/v3/order, y solo un cliente con un OrderConsent emitido puede prepararlas.
     writes = {key for key in ENDPOINTS if key[0] != "GET"}
     assert writes == {("POST", "/api/v3/order"), ("DELETE", "/api/v3/order")}
     reader = DemoClient(lambda: Credentials(API_KEY, SECRET), must_not_be_called, CLOCK)

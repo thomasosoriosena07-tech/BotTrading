@@ -10,6 +10,8 @@ import pytest
 
 from bottrading.demo_client import (
     ORDERS_ENV,
+    OrderConsent,
+    grant_order_consent,
     Credentials,
     DemoApiError,
     DemoClient,
@@ -49,6 +51,9 @@ DAY = datetime(2026, 10, 12, tzinfo=timezone.utc)
 
 def credentials():
     return Credentials(API_KEY, SECRET)
+
+
+CONSENT = grant_order_consent(True, {ORDERS_ENV: "1"})
 
 
 class Exchange:
@@ -297,7 +302,7 @@ class Scripted:
 
 
 def gateway(get=None, post=None):
-    client = DemoClient(credentials, Scripted(get, post), lambda: NOW, trading=True)
+    client = DemoClient(credentials, Scripted(get, post), lambda: NOW, consent=CONSENT)
     return DemoGateway(client, STEPS)
 
 
@@ -348,7 +353,7 @@ def test_order_parameters_are_validated_before_the_transport(params, ok):
     def must_not_send(request, headers):
         raise AssertionError("no debía enviarse")
     client = DemoClient(credentials, must_not_send if not ok else Scripted(
-        post=(200, {"status": "FILLED", "executedQty": "1"})), lambda: NOW, trading=True)
+        post=(200, {"status": "FILLED", "executedQty": "1"})), lambda: NOW, consent=CONSENT)
     side = params.pop("side")
     call = lambda: client.new_market_order("BTCUSDT", side, "bt-BTCUSDT-20261012-B",  # noqa: E731
                                           **params)
@@ -360,10 +365,58 @@ def test_order_parameters_are_validated_before_the_transport(params, ok):
 
 
 def test_order_ids_and_types_are_closed():
-    client = DemoClient(credentials, Scripted(post=(200, {})), lambda: NOW, trading=True)
+    client = DemoClient(credentials, Scripted(post=(200, {})), lambda: NOW, consent=CONSENT)
     for bad_id in ("manual-1", "bt-x y", ""):
         with pytest.raises(RequestRefused):
             client.new_market_order("BTCUSDT", "BUY", bad_id, quote_order_qty="10")
     with pytest.raises(RequestRefused):
         client.new_market_order("BNBUSDT", "BUY", "bt-BNBUSDT-20261012-B", quote_order_qty="10")
     assert math.isfinite(NOW) and isinstance(DemoApiError("GET", "/x", 400).duplicate, bool)
+
+
+# --- revisión de Codex de F4: el permiso de escritura no es un booleano público -------
+
+
+def test_consent_requires_both_the_flag_and_the_environment_variable():
+    assert grant_order_consent(True, {ORDERS_ENV: "1"}) is not None
+    for flag, env in ((False, {ORDERS_ENV: "1"}), (True, {}), (True, {ORDERS_ENV: "true"}),
+                      (1, {ORDERS_ENV: "1"}), ("yes", {ORDERS_ENV: "1"})):
+        assert grant_order_consent(flag, env) is None
+
+
+def test_hand_built_consent_or_old_trading_flag_cannot_send():
+    def must_not_send(request, headers):
+        raise AssertionError("no debía enviarse")
+    forged = DemoClient(credentials, must_not_send, lambda: NOW,
+                        consent=OrderConsent({ORDERS_ENV: "1"}))
+    with pytest.raises(RequestRefused, match="solo lectura"):
+        forged.new_market_order("BTCUSDT", "BUY", "bt-BTCUSDT-20261012-B", quote_order_qty="10")
+    with pytest.raises(TypeError):
+        DemoClient(credentials, must_not_send, lambda: NOW, trading=True)
+
+
+def test_consent_is_rechecked_at_send_time():
+    def must_not_send(request, headers):
+        raise AssertionError("no debía enviarse")
+    environ = {ORDERS_ENV: "1"}
+    client = DemoClient(credentials, must_not_send, lambda: NOW,
+                        consent=grant_order_consent(True, environ))
+    environ[ORDERS_ENV] = "0"  # se retira el permiso a mitad de proceso
+    with pytest.raises(RequestRefused, match="solo lectura"):
+        client.new_market_order("BTCUSDT", "BUY", "bt-BTCUSDT-20261012-B", quote_order_qty="10")
+
+
+def test_only_main_grants_order_consent():
+    import re
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "src" / "bottrading"
+    uses = {}
+    for path in src.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for name in ("grant_order_consent(", "_ISSUED_CONSENTS", "OrderConsent("):
+            count = len(re.findall(rf"(?<![\w.])(?<!def )(?<!class ){re.escape(name)}", text))
+            if count:
+                uses.setdefault(name, {})[path.name] = count
+    assert uses["grant_order_consent("] == {"demo_client.py": 1}  # solo en main()
+    assert uses["OrderConsent("] == {"demo_client.py": 1}  # solo en grant_order_consent
+    assert set(uses["_ISSUED_CONSENTS"]) == {"demo_client.py"}

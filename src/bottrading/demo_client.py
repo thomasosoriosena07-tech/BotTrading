@@ -33,6 +33,7 @@ import re
 import sys
 import time
 import urllib.error
+import weakref
 import urllib.parse
 import urllib.request
 import os
@@ -78,6 +79,7 @@ BASE_URL = f"https://{DEMO_HOST}"
 API_KEY_HEADER = "X-MBX-APIKEY"
 CREDENTIAL_TARGET = "BotTrading-Demo"
 RECV_WINDOW_MS = 5000  # D030: <= 5000
+ORDERS_ENV = "BOTTRADING_DEMO_ORDERS"
 TIMEOUT_SECONDS = 10
 
 
@@ -156,8 +158,8 @@ def _signed(required: str = "", optional: str = "") -> Endpoint:
 
 
 # POST/DELETE /api/v3/order: añadidos con la aprobación (b) de D030 (órdenes
-# MARKET en la cuenta DEMO). Solo un DemoClient creado con trading=True puede
-# prepararlos; el resto del tiempo el cliente es de solo lectura.
+# MARKET en la cuenta DEMO). Solo un DemoClient con un OrderConsent EMITIDO por
+# grant_order_consent puede prepararlos; si no, el cliente es de solo lectura.
 WRITE_METHODS = frozenset({"POST", "DELETE"})
 ENDPOINTS: Mapping[tuple[str, str], Endpoint] = {
     ("GET", "/api/v3/time"): Endpoint(False),
@@ -391,14 +393,50 @@ def _retry_after(headers) -> int | None:
 # --- cliente -------------------------------------------------------------------------
 
 
+# --- consentimiento de órdenes (revisión de Codex de F4) ----------------------------
+
+
+@dataclass(frozen=True, eq=False)
+class OrderConsent:
+    """Permiso para enviar órdenes a la cuenta DEMO en este proceso.
+
+    Solo vale si lo emitió grant_order_consent, que exige el flag
+    --send-orders Y la variable BOTTRADING_DEMO_ORDERS=1. Un objeto construido
+    a mano se rechaza (registro de identidades). Dentro de un proceso de Python
+    nada es infalsificable: saltárselo exige usar a propósito el registro
+    privado, y un test estático comprueba que solo main() emite permisos.
+    """
+
+    environ: Mapping[str, str] = field(repr=False)
+
+
+_ISSUED_CONSENTS: "weakref.WeakSet[OrderConsent]" = weakref.WeakSet()
+
+
+def grant_order_consent(send_orders: bool, environ: Mapping[str, str]) -> OrderConsent | None:
+    """Doble consentimiento de D030; None si falta cualquiera de los dos."""
+    if not (send_orders is True and environ.get(ORDERS_ENV) == "1"):
+        return None
+    consent = OrderConsent(environ)
+    _ISSUED_CONSENTS.add(consent)
+    return consent
+
+
+def _consent_is_valid(consent: object) -> bool:
+    # Emitido aquí y con la variable todavía activa en el momento de enviar.
+    return (isinstance(consent, OrderConsent) and consent in _ISSUED_CONSENTS
+            and consent.environ.get(ORDERS_ENV) == "1")
+
+
 class DemoClient:
     """Lecturas de la cuenta demo. Sin métodos de órdenes (aprobación (b))."""
 
     def __init__(self, credentials: Callable[[], Credentials] | None = read_windows_credential,
                  transport: Transport = urllib_transport,
-                 clock: Callable[[], float] = time.time, *, trading: bool = False):
+                 clock: Callable[[], float] = time.time, *,
+                 consent: OrderConsent | None = None):
         self._credentials, self._transport, self._clock = credentials, transport, clock
-        self._trading = trading  # solo con --send-orders y BOTTRADING_DEMO_ORDERS=1
+        self._consent = consent  # solo grant_order_consent lo emite (D030)
 
     def new_market_order(self, symbol: str, side: str, client_order_id: str, *,
                          quantity: str | None = None, quote_order_qty: str | None = None) -> dict:
@@ -447,8 +485,9 @@ class DemoClient:
     def prepare(self, path: str, params: Mapping[str, str],
                 method: str = "GET") -> tuple[PreparedRequest, dict]:
         """Construye, firma y valida la petición; devuelve también las cabeceras."""
-        if method in WRITE_METHODS and not self._trading:
-            raise RequestRefused(f"cliente de solo lectura: {method} no permitido")
+        if method in WRITE_METHODS and not _consent_is_valid(self._consent):
+            raise RequestRefused(f"cliente de solo lectura: {method} no permitido sin "
+                                 f"--send-orders y {ORDERS_ENV}=1")
         endpoint = ENDPOINTS.get((method, path))
         if endpoint is None:
             raise RequestRefused(f"petición no permitida: {method} {path}")
@@ -600,9 +639,6 @@ class DemoPaths:
         return cls(ledger, ledger.with_name("baseline.json"), ledger.with_name("STOP"))
 
 
-ORDERS_ENV = "BOTTRADING_DEMO_ORDERS"
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m bottrading.demo_client",
@@ -634,11 +670,12 @@ def main(argv: Sequence[str] | None = None, *,
     environ = os.environ if environ is None else environ
     # Doble consentimiento (D030): solo elige entre simulación y envío DENTRO de
     # demo; el host y la tabla de peticiones siguen fijos.
-    send = command == "run" and args.send_orders and environ.get(ORDERS_ENV) == "1"
+    consent = grant_order_consent(args.send_orders, environ) if command == "run" else None
+    send = consent is not None
     failure = None
     try:
         paths = paths or DemoPaths.default()
-        client = DemoClient(credentials, transport, clock, trading=send)
+        client = DemoClient(credentials, transport, clock, consent=consent)
         if command != "check":
             _assert_no_kill_switch(paths)
         _assert_clock(client, clock, out)

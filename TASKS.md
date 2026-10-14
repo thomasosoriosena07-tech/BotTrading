@@ -867,3 +867,12 @@ readme.md.
 - Simulación REAL contra la cuenta demo (sin envío): "Orden:
   bt-BTCUSDT-20260817-B BUY por 1000.00 USDT" (coincide con la señal de BTC
   de paper). Aún no se ha enviado ninguna orden.
+- Revisión de Codex de 6d2d8b1 (transmitida por el usuario): requiere
+  cambios antes de la primera orden: DemoClient(trading=True) permitía
+  escribir sin los dos consentimientos. Corregido: desaparece el booleano;
+  el cliente solo escribe con un OrderConsent EMITIDO por grant_order_consent
+  (flag --send-orders Y BOTTRADING_DEMO_ORDERS=1), que solo llama main(); la
+  variable se vuelve a comprobar en cada envío; un permiso fabricado a mano
+  se rechaza; test estático de quién emite permisos. Codex confirmó el resto
+  (validación de órdenes, gateway, ids deterministas, límites, orden de run,
+  redondeo). 709 passed. Sigue sin enviarse ninguna orden.
