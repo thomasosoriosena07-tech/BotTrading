@@ -1045,3 +1045,6 @@ DECISIONS.md, readme.md.
   "desconocido". Corregido: la columna admite vacío (None = desconocido);
   se escribe vacía y se lee como None, nunca 0. Pruebas: columna vacía y
   lectura None. 730 passed.
+- Revisión de Codex de e3243cc (transmitida por el usuario): "listo". El
+  informe de ejecución de F5 queda cerrado (métricas, diario, incidencias y
+  conteo de envíos). Sigue F5: acumular 30 días seguidos sin incidencias.
