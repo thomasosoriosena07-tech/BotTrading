@@ -915,6 +915,10 @@ pendiente sobre la fórmula de "liquidez dudosa", que quedó resuelto en A.5).
 - **Sin cambios en T019, T021, paper/ ni en el baseline.**
 - **Implementación:** requiere una aprobación explícita aparte del usuario.
 - **Cambios de reglas:** antes del holdout, solo con fecha y motivo y sin haberlo visto. Después del holdout, ninguno.
+- **Enmienda 1 (2026-10-14, I1, antes de ver el holdout):** se añade a A.4 el tratamiento de las velas sin negociación (como hueco) y de las velas truncadas (marcadas y en la prueba de exclusión).
+  - Motivo: al validar los datos reales aparecieron 13 y 5 velas así, todas de paradas de 2020-2023 y ninguna en la validación. Con la regla anterior, toda la serie sería un defecto crítico.
+  - SHA-256 del protocolo enmendado (blob LF): 5230b0417e52ebfcb08198fb9ebca4e3a9115537f084343ee510d4bda6e3cdcf.
+  - Pendiente de revisión de Codex.
 
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.

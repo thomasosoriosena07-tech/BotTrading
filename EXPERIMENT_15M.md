@@ -553,6 +553,15 @@ o costumbre, no derivado de los datos; necesita aprobación).
   - Las ventanas de la ruptura cuentan velas, no tiempo; es una limitación documentada.
   - **Todos los tramos cuentan.** No se excluye ningún trimestre por tener huecos: no queda criterio de exclusión que decidir después. Se informa del número de huecos de cada tramo.
 - **Velas incompletas:** no existen en los ZIP mensuales, porque solo hay meses cerrados (D019). Un archivo de un mes en curso se rechaza.
+- **Enmienda 1 (2026-10-14, antes de ver el holdout).**
+  - **Motivo (VERIFICADO al validar los datos reales):** de 236 488 velas de 2020-01 a 2026-09 hay:
+    - 13 velas sin negociación (0 operaciones y volumen 0) en tres paradas: 2020-12-21, 2021-02-11 y 2023-03-24. Una de ellas tiene un `close_time` anterior a su `open_time`.
+    - 5 velas "truncadas", con operaciones pero cerradas antes de los 15 min: 2020-02-19, 2020-03-04, 2021-04-25, 2021-08-13 y 2021-12-24.
+    - Ninguna de estas velas está en la validación (2024-01 a 2026-09).
+    - Con la regla anterior ("el `close_time` corresponde a su vela"), toda la serie sería un defecto crítico.
+  - **Vela sin negociación:** se descarta y cuenta como hueco. Una orden enviada durante una parada espera a que se vuelva a negociar, así que se aplica la regla causal de huecos de arriba. Si solo uno de los dos (operaciones o volumen) es 0, es un error de datos.
+  - **Vela truncada:** se conserva y se marca. Las operaciones ejecutadas en su apertura cuentan como "tras hueco" en la prueba de exclusión de A.9.
+  - **Cualquier otro `close_time` irregular** sigue siendo un error de datos (defecto crítico 2).
 
 ### A.5 Ejecución y costes
 
@@ -758,3 +767,4 @@ Un resultado RECHAZADO o INCONCLUSO es válido y se publica tal cual.
 | 2026-10-14 | v3: revisión T022-R2 de Codex. Selección global única (se elimina la reselección por trimestre). Huecos tratados de forma causal con la siguiente vela existente y sin excluir tramos. C6 justificado como convención. C8 y C9 exactos (bootstrap de bloques, semilla y percentil). C4 ampliado como decisión del usuario. Salto cierre→apertura distinto del slippage. Liquidez con la vela anterior. Cota de redondeo acumulada. Muestreo diario exacto y drawdown intradía. Regla ante la exposición al mercado. Referencias corregidas | Claude Code |
 | 2026-10-14 | v4: el usuario aprueba las decisiones de A.12. Revisión T022-R3 de Codex: algoritmo exacto de C9, prueba de exclusión para operaciones "tras hueco" y "liquidez dudosa", lista cerrada de defectos críticos, días naturales sin velas ("día arrastrado") y C4 con retorno > 0 en alto | Claude Code |
 | 2026-10-14 | v4.1: revisión T022-R4 de Codex: fórmula exacta del volumen para "liquidez dudosa" (A.5) | Claude Code |
+| 2026-10-14 | Enmienda 1 (A.4): velas sin negociación como hueco y velas truncadas marcadas. Motivo: paradas del exchange halladas al validar los datos reales de 2020-2023, antes de ver el holdout. Registrada en D031 | Claude Code |
