@@ -921,6 +921,14 @@ pendiente sobre la fórmula de "liquidez dudosa", que quedó resuelto en A.5).
   - Codex, en su revisión de I1: "enmienda causal y acotada". INFERIDO: que se deba a paradas del exchange.
 - **Aclaración 1 (2026-10-14, I2, no cambia ningún criterio):** detalla en A.9 (defecto crítico 3) qué identidades contables se comprueban y la tolerancia del efectivo tras cada operación (revisión de Codex de I2).
   - SHA-256 del protocolo (blob LF): 5618253be395b3e719a04aba023d5684654e9417cf900a931bdd32ce45d5f0a6.
+- **CIERRE (2026-10-14): RECHAZADO.**
+  - **Validación walk-forward** (rama experiment/15m, informe reports/exp15m/validation.md, SHA-256 9283ad45…; trials 7e7096c6…; Codex lo reprodujo con los mismos hashes): las 4 configuraciones tienen mediana del Sharpe diario negativa (de −1,87 a −2,62) en el escenario base.
+    - Elegida por la regla única: donchian(96,48).
+    - C7 incumplido. Según A.9, el veredicto solo puede ser RECHAZADO, lo confirmó Codex.
+  - **Causa:** costes. Sin costes, la mediana trimestral está entre −1 % y +4 %; con unos 0,30 % por ida y vuelta y 45-85 idas y vueltas por trimestre, entre −13,6 % y −19,6 % por trimestre.
+  - **Holdout:** por decisión del usuario ("haz lo recomendado") NO se construye I4 ni se abre. Los datos de 2026-11 a 2027-01 quedan SIN VER y sirven como holdout de un experimento futuro (que exigiría su propio protocolo y aprobación).
+  - **Rama:** experiment/15m queda como archivo, sin fusionar con main. El baseline, T019 y T021 no cambiaron.
+  - **Lección:** a 15 minutos y con comisiones de cuenta minorista, una ruptura sencilla no supera los costes. Cualquier variante tendría que operar mucho menos.
 
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.

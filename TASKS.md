@@ -73,11 +73,11 @@ holdout final, que se evalúa una sola vez (T017).
   (pendiente: informe de ejecución y revisión de Codex). Lectura (a) y
   envío de órdenes demo (b) aprobados. Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
-- [~] T022 — Experimento intradía 15m EXP-15M-001 (D031).
-  Protocolo CONGELADO (EXPERIMENT_15M.md, Anexo A v4.1).
-  Implementación pendiente de aprobación explícita, solo en el worktree
-  C:/Users/thoma/bottrading-exp15m. Holdout prospectivo 2026-11 a 2027-01,
-  abierto una vez desde 2027-02-01.
+- [x] T022 — Experimento intradía 15m EXP-15M-001 (D031): CERRADO,
+  RECHAZADO (2026-10-14). C7 incumplido en la validación: las 4
+  configuraciones pierden con costes. El holdout 2026-11 a 2027-01 NO se abrió
+  y queda sin ver. Código e informe en la rama experiment/15m (archivo, sin
+  fusionar).
 
 ## Reglas
 - Marcar una tarea como completada solo después de verificarla.
@@ -1191,3 +1191,11 @@ passed, 4 skipped.
   con C7 incumplido, según A.9 solo cabe RECHAZADO. P2 corregido: la CLI
   rechaza por su nombre, antes de leerlos, los ZIP desde 2026-10. P3: prueba de
   prefijos exhaustiva añadida. 829 passed, 4 skipped; informe idéntico.
+
+## Registro T022: cierre de EXP-15M-001 (Claude Code, 2026-10-14)
+- Decisión del usuario: "haz lo recomendado". Cerrado como RECHAZADO (C7
+  incumplido, A.9); no se construye I4 y no se abre el holdout, que queda sin
+  ver (2026-11 a 2027-01). Anotado en EXPERIMENT_15M.md (estado final y
+  registro de cambios) y en D031.
+- La rama experiment/15m (último commit bbff6ae) y el worktree
+  C:/Users/thoma/bottrading-exp15m quedan como archivo; nada se fusiona con main.

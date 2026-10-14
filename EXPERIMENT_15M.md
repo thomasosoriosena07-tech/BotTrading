@@ -467,7 +467,13 @@ Esta sección prevalece ante cualquier instrucción contradictoria sobre la modi
 
 ## Anexo A — Especificación propuesta de EXP-15M-001 (Claude Code, T022, 2026-10-14)
 
-**Estado: CONGELADO el 2026-10-14 (versión 4.1).** Las decisiones de A.12 las aprobó el
+**Estado final: CERRADO — RECHAZADO (2026-10-14).** En la validación (I3), la mediana del
+Sharpe de la configuración elegida, donchian(96,48), fue −1,87, así que C7 no se cumple y,
+según A.9, solo cabe RECHAZADO. Por decisión del usuario, el holdout (2026-11-01 →
+2027-01-31) **no se abre**: queda sin ver para experimentos futuros. Informe:
+reports/exp15m/validation.md en la rama experiment/15m. Ver D031.
+
+**Estado previo: CONGELADO el 2026-10-14 (versión 4.1).** Las decisiones de A.12 las aprobó el
 usuario. Incorpora las revisiones T022-R a T022-R4 de Codex; el último punto pendiente de
 T022-R4, la fórmula de "liquidez dudosa", quedó resuelto en A.5. El SHA-256 de este archivo
 congelado está en DECISIONS.md D031. Sustituye a los "a definir" de las secciones 7 a 12, y
@@ -775,3 +781,4 @@ Un resultado RECHAZADO o INCONCLUSO es válido y se publica tal cual.
 | 2026-10-14 | v4.1: revisión T022-R4 de Codex: fórmula exacta del volumen para "liquidez dudosa" (A.5) | Claude Code |
 | 2026-10-14 | Enmienda 1 (A.4): velas sin negociación como hueco y velas truncadas marcadas. Motivo: paradas del exchange halladas al validar los datos reales de 2020-2023, antes de ver el holdout. Registrada en D031 | Claude Code |
 | 2026-10-14 | Aclaración 1 (A.9, defecto crítico 3): alcance de las identidades contables y tolerancia del efectivo tras cada operación. Revisión de Codex de I2; no cambia ningún criterio | Claude Code |
+| 2026-10-14 | Cierre: C7 incumplido en la validación (I3; Codex reprodujo los SHA-256 del informe y confirmó la lectura de A.9). Veredicto RECHAZADO. El holdout no se abre (decisión del usuario: "haz lo recomendado") | Claude Code |
