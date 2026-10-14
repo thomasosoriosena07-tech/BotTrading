@@ -246,6 +246,10 @@ def test_unknown_outcome_stops_without_resending(world):
     assert code == 1 and len(exchange.posts()) == first  # nunca se reenvía
     code, text = run(world, "run")  # sin envío: se niega a seguir con pendientes
     assert code == 1 and "sin resolver" in text
+    # Revisión de Codex: la ejecución detenida anota sus envíos reales (1 SENT), no 0.
+    from bottrading.demo_report import read_runs
+    entries = read_runs(paths.runs)
+    assert [(e.outcome, e.orders) for e in entries] == [("detenido", 1), ("detenido", 0)]
 
 
 # --- piezas puras ---------------------------------------------------------------------
@@ -524,3 +528,14 @@ def test_broken_journal_does_not_turn_a_good_run_into_a_stop(world):
     assert "AVISO: no se pudo actualizar el informe" in text and "DETENIDO" not in text
     code, text = run(world, "report")  # el informe sí falla de forma visible
     assert code == 1 and "AVISO" in text
+
+
+def test_unreadable_ledger_journals_unknown_posts_not_zero(world):
+    from bottrading.demo_report import read_runs
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    paths.ledger.with_name("orders.state").write_text("rows=9\nsha256=00\n", encoding="utf-8")
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 1 and exchange.posts() == []
+    (entry,) = read_runs(paths.runs)
+    assert entry.outcome == "detenido" and "envíos: desconocido" in entry.detail

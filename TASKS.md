@@ -1033,3 +1033,10 @@ DECISIONS.md, readme.md.
   convierte un run correcto en DETENIDO (report sí devuelve 1). Pruebas:
   rechazo -> incidencia con 1 envío y repetición con 0; repetición correcta
   con 0 envíos; diario dañado. 729 passed.
+- Revisión de Codex de cca258c (transmitida por el usuario): la ruta de error
+  anotaba 0 envíos aunque se hubiera registrado SENT antes de detenerse (estado
+  ambiguo). Corregido: al detenerse, main() cuenta los SENT anotados en el
+  registro privado desde el inicio de esa ejecución (sent_since); si el
+  registro no se puede abrir, anota "envíos: desconocido", nunca 0. Pruebas:
+  resultado desconocido -> detenido con 1 envío, repetición con 0; registro
+  ilegible -> desconocido. 730 passed.

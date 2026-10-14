@@ -697,6 +697,7 @@ def main(argv: Sequence[str] | None = None, *,
     de check, comprueba antes el kill switch.
     """
     args = build_parser().parse_args(argv)
+    started = datetime.now(timezone.utc)  # mismo reloj que las marcas del registro
     command = args.command
     # Doble consentimiento (D030): solo elige entre simulación y envío DENTRO de
     # demo; el host y la tabla de peticiones siguen fijos.
@@ -726,8 +727,21 @@ def main(argv: Sequence[str] | None = None, *,
         failure = f"{type(error).__name__}: {error}"
     out(f"DETENIDO: {failure}")
     if command == "run" and send and paths is not None:
-        _journal(paths, clock, "detenido", 0, failure, out)
+        posts, note = _posts_since(paths, started)
+        _journal(paths, clock, "detenido", posts, failure + note, out)
     return 1
+
+
+def _posts_since(paths, started) -> tuple[int, str]:
+    """Envíos reales de una ejecución detenida, contados en el registro privado.
+    Si el registro no se puede abrir, se anota como desconocido, nunca como 0."""
+    posts, problem = 0, None
+    try:
+        with OrderLedger(paths.ledger) as ledger:
+            posts = ledger.sent_since(started)
+    except (OSError, ValueError, StopTheDay, LedgerIntegrityError) as error:
+        problem = type(error).__name__
+    return (0, f" (envíos: desconocido, {problem})") if problem else (posts, "")
 
 
 def _journal(paths, clock, outcome, orders, detail, out) -> None:
