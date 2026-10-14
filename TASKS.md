@@ -1165,3 +1165,24 @@ no se tocan.
   que necesita datos diarios).
 - Pendiente: I3 (walk-forward, selección e informe de validación) e I4 (guarda
   de apertura única del holdout).
+
+## Registro T022 I3: validación walk-forward (Claude Code, 2026-10-14)
+Rama experiment/15m: exp15m_eval.py y sus pruebas (e4538b6, 04f638d); informe
+reports/exp15m/validation.md y validation_trials.csv (76842e5), generados con
+`python -m bottrading.exp15m_eval validate` en el commit padre. Pruebas: 825
+passed, 4 skipped.
+- 176 evaluaciones de validación más desarrollo y referencias. Contabilidad
+  verificada en cada una; prueba de prefijos con datos reales en cada corte.
+- Selección (regla única de A.6): donchian(96,48), con mediana del Sharpe
+  diario de -1,87, la "menos mala". Las cuatro configuraciones tienen mediana
+  negativa (de -1,87 a -2,62).
+- C7 NO se cumple. Según A.9, el veredicto ya no puede ser VALIDADO ni
+  INCONCLUSO: será RECHAZADO sea cual sea el holdout.
+- Lectura: sin costes, la mediana trimestral está entre -1 % y +4 %; con los
+  costes base (unos 0,30 % por ida y vuelta, 480-930 idas y vueltas en 11
+  trimestres), entre -13,6 % y -19,6 % por trimestre. Desarrollo 2020-2023
+  (base): de -75 % a -94 %. El baseline diario y buy-and-hold quedan muy por
+  encima. Es el obstáculo de costes previsto en A.5.
+- Pendiente: revisión de Codex de I3 y decisión del usuario sobre cerrar el
+  experimento ya (sin abrir el holdout, que queda sin ver para futuros
+  experimentos) o construir I4 y abrirlo en 2027-02 solo como registro.
