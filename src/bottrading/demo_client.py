@@ -56,6 +56,7 @@ from bottrading.demo_ledger import (
     check_private_location,
     default_ledger_path,
     execute_intent,
+    write_private_file,
 )
 from bottrading.demo_dashboard import render_demo_dashboard
 from bottrading.demo_report import append_run, collect_fills, read_runs, render_report
@@ -814,27 +815,39 @@ def _write_report(client, paths, records, recon, candles, infos, today, out) -> 
     fills = collect_fills(records, recon.orders, recon.trades, candles,
                           {s: info.base_asset for s, info in infos.items()})
     prices = _prices(client)
-    problem = None
+    runs, problem = [], None
     try:
         runs = read_runs(paths.runs)
-        for target in (paths.report, paths.dashboard):
-            _check_private(target)  # justo antes de escribir (enlaces incluidos)
-        paths.report.write_text(render_report(fills, records, runs, today), encoding="utf-8")
-        paths.dashboard.write_text(render_demo_dashboard(
-            fills, records, runs, recon.holdings, prices, today,
-            datetime.fromtimestamp(client.clock(), timezone.utc),
-            REPO_ROOT / "paper" / "dashboard.html"), encoding="utf-8")
-    except (OSError, ValueError, StopTheDay) as error:
+    except (OSError, ValueError) as error:
         problem = type(error).__name__
     if problem:
-        out(f"AVISO: no se pudo actualizar el informe de ejecución ({problem}); "
-            "el resultado de run no cambia")
+        out(f"AVISO: no se pudo leer el diario ({problem}); el resultado de run no cambia")
         return False
+    now = datetime.fromtimestamp(client.clock(), timezone.utc)
+    pages = [  # independientes: un destino bloqueado no impide el otro (revisión de Codex)
+        ("informe de ejecución", paths.report,
+         lambda: render_report(fills, records, runs, today)),
+        ("panel privado", paths.dashboard,
+         lambda: render_demo_dashboard(fills, records, runs, recon.holdings, prices, today, now,
+                                       REPO_ROOT / "paper" / "dashboard.html")),
+    ]
+    written = True
+    for label, target, render in pages:
+        failure = None
+        try:
+            _check_private(target)  # primera barrera; la escritura no sigue enlaces
+            write_private_file(target, render().encode("utf-8"))
+        except (OSError, ValueError, StopTheDay) as error:
+            failure = type(error).__name__
+        if failure:
+            written = False
+            out(f"AVISO: no se pudo actualizar el {label} ({failure}); "
+                "el resultado de run no cambia")
+        else:
+            out(f"{label.capitalize()}: {target}")
     pending = sum(1 for f in fills if f.open_price is None)
-    out(f"Informe de ejecución: {len(fills)} órdenes ejecutadas ({pending} con la vela del día "
-        f"pendiente); guardado en {paths.report}")
-    out(f"Panel privado de la cuenta demo: {paths.dashboard}")
-    return True
+    out(f"Órdenes ejecutadas: {len(fills)} ({pending} con la vela del día pendiente)")
+    return written
 
 
 def _load_candles(data_dir) -> dict:

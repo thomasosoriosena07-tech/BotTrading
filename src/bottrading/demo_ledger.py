@@ -28,6 +28,7 @@ import io
 import os
 import sys
 import time
+import uuid
 import weakref
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -407,14 +408,31 @@ def _render(rows: Sequence[Sequence[str]]) -> bytes:
     return buffer.getvalue().encode("utf-8")
 
 
-def _write_atomic(path: Path, content: bytes) -> None:
+def write_private_file(path: Path, content: bytes) -> None:
+    """Escribe sin pasar NUNCA por lo que ya haya en `path` (revisión de Codex).
+
+    El contenido va a un temporal NUEVO con nombre aleatorio, creado en
+    exclusiva ("xb": falla si ya existe algo con ese nombre, enlace incluido),
+    y después os.replace sustituye la entrada del directorio. Si `path` era un
+    enlace simbólico o un hard link hacia otro sitio, se reemplaza el enlace:
+    el archivo enlazado no se toca. Límite: la carpeta se valida al empezar;
+    sustituirla por un enlace durante la ejecución no se detecta.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".part")
-    with open(temporary, "wb") as handle:
-        handle.write(content)
-        handle.flush()
-        os.fsync(handle.fileno())
-    temporary.replace(path)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(temporary, "xb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _write_atomic(path: Path, content: bytes) -> None:
+    write_private_file(path, content)
 
 
 # --- protocolo -----------------------------------------------------------------------

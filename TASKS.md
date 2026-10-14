@@ -1084,3 +1084,17 @@ informe), tests/test_demo_dashboard.py (nuevo), tests/test_demo_run.py, readme.m
   redirigido al repositorio -> detenido sin peticiones (6 casos); enlace a
   mitad -> AVISO, run 0 y panel no escrito; enlace simbólico real (se salta
   sin modo desarrollador en este Windows). 744 passed, 1 skipped.
+- Revisión de Codex de e2e251d (transmitida por el usuario): quedaba una
+  ventana entre validar y escribir, los hard links no se detectaban y un
+  panel bloqueado impedía también el informe. Corregido: write_private_file
+  (demo_ledger) escribe en un temporal NUEVO con nombre aleatorio creado en
+  exclusiva y lo sustituye con os.replace: nunca escribe a través de un enlace
+  simbólico ni de un hard link existentes (el archivo enlazado queda intacto).
+  Lo usan el registro, el diario (append reescribe el archivo completo), el
+  informe y el panel. Informe y panel se escriben de forma independiente.
+  La validación de rutas sigue como primera barrera. Límite documentado: si
+  la CARPETA se sustituye por un enlace durante la ejecución, no se detecta
+  (se valida al empezar). Pruebas: hard links reales en panel, informe y
+  diario (víctimas intactas); panel bloqueado con informe escrito; symlink
+  real (se salta sin modo desarrollador). 746 passed, 2 skipped. report real
+  OK, sin temporales sueltos.

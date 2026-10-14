@@ -530,7 +530,7 @@ def test_broken_journal_does_not_turn_a_good_run_into_a_stop(world):
     paths.runs.write_text("cabecera,rota\n", encoding="utf-8")
     code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
     assert code == 0 and "Reconciliación posterior: OK" in text
-    assert "AVISO: no se pudo actualizar el informe" in text and "DETENIDO" not in text
+    assert "AVISO: no se pudo leer el diario" in text and "DETENIDO" not in text
     code, text = run(world, "report")  # el informe sí falla de forma visible
     assert code == 1 and "AVISO" in text
 
@@ -588,8 +588,9 @@ def test_link_appearing_during_the_run_blocks_only_that_write(world, monkeypatch
         return real(*args, **kwargs)
     monkeypatch.setattr(client_module, "_write_report", link_then_write)
     code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
-    assert code == 0 and "AVISO: no se pudo actualizar el informe" in text
+    assert code == 0 and "AVISO: no se pudo actualizar el panel privado" in text
     assert not paths.dashboard.exists()
+    assert paths.report.exists()  # revisión de Codex: el informe se escribe igualmente
 
 
 def test_real_file_symlink_into_the_repo_is_refused(world, tmp_path):
@@ -603,3 +604,51 @@ def test_real_file_symlink_into_the_repo_is_refused(world, tmp_path):
         pytest.skip("crear enlaces simbólicos de archivo requiere modo desarrollador")
     code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
     assert code == 1 and "ubicación privada no permitida" in text and not target.exists()
+
+
+def test_hard_linked_outputs_are_replaced_not_written_through(world, tmp_path):
+    # Revisión de Codex: resolve() no ve los hard links; la escritura por
+    # reemplazo deja intacto el archivo enlazado.
+    import os
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    outside = {}
+    for name, target in (("panel", paths.dashboard), ("informe", paths.report)):
+        victim = tmp_path / f"ajeno_{name}.txt"
+        victim.write_text("no tocar", encoding="utf-8")
+        os.link(victim, target)
+        outside[name] = victim
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0, text
+    for victim in outside.values():
+        assert victim.read_text(encoding="utf-8") == "no tocar"
+    assert "BTCUSDT" in paths.dashboard.read_text(encoding="utf-8")
+
+
+def test_private_write_never_follows_an_existing_symlink(tmp_path):
+    from bottrading.demo_ledger import write_private_file
+    victim = tmp_path / "ajeno.txt"
+    victim.write_text("no tocar", encoding="utf-8")
+    link = tmp_path / "salida.html"
+    try:
+        link.symlink_to(victim)
+    except OSError:
+        pytest.skip("crear enlaces simbólicos de archivo requiere modo desarrollador")
+    write_private_file(link, b"nuevo")
+    assert victim.read_text(encoding="utf-8") == "no tocar"
+    assert not link.is_symlink() and link.read_bytes() == b"nuevo"
+
+
+def test_hard_linked_journal_is_replaced_not_appended_through(tmp_path):
+    import os
+    from datetime import datetime, timezone
+    from bottrading.demo_report import RUN_COLUMNS, append_run, read_runs
+    victim = tmp_path / "ajeno.csv"
+    header = ",".join(RUN_COLUMNS) + "\n"
+    victim.write_text(header, encoding="utf-8", newline="")
+    journal = tmp_path / "runs.csv"
+    os.link(victim, journal)
+    at = datetime(2026, 10, 15, 13, 5, tzinfo=timezone.utc)
+    append_run(journal, at.date(), at, "ok", 0, "sin incidencias")
+    assert victim.read_text(encoding="utf-8") == header  # el archivo enlazado no cambia
+    assert [e.outcome for e in read_runs(journal)] == ["ok"]

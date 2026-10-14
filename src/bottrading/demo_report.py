@@ -27,7 +27,7 @@ from pathlib import Path
 
 from bottrading.crossasset import CONFIG
 from bottrading.data import Candle
-from bottrading.demo_ledger import OrderRecord
+from bottrading.demo_ledger import OrderRecord, write_private_file
 
 QUOTE_ASSET = "USDT"
 # Mismo criterio que Hide-Secrets (scripts/demo_daily.ps1): toda secuencia
@@ -145,20 +145,19 @@ class RunEntry:
 
 def append_run(path: Path, day: date, at: datetime, outcome: str, orders: int | None,
                detail: str) -> None:
-    """Añade una línea al diario privado de ejecuciones (solo de añadir)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    new = not path.exists()
+    """Añade una línea al diario privado de ejecuciones (solo de añadir).
+
+    Se reescribe el archivo completo con write_private_file: nunca se escribe a
+    través de un enlace existente (revisión de Codex)."""
+    previous = path.read_bytes() if path.exists() else b""
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
-    if new:
+    if not previous:
         writer.writerow(RUN_COLUMNS)
     writer.writerow([day.isoformat(), at.isoformat(timespec="seconds"), outcome,
                      "" if orders is None else orders,
                      detail.replace("\n", " ")[:300]])
-    with open(path, "a", encoding="utf-8", newline="") as handle:
-        handle.write(buffer.getvalue())
-        handle.flush()
-        os.fsync(handle.fileno())
+    write_private_file(path, previous + buffer.getvalue().encode("utf-8"))
 
 
 def read_runs(path: Path) -> list[RunEntry]:
