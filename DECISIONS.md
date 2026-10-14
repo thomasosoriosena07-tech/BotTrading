@@ -888,6 +888,34 @@ quiero que automaticemos el bot lo mas rapido"):
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
   evento): el comando se detiene con DETENIDO y no envía nada ese día.
 
+## D031 — Protocolo del experimento intradía 15m EXP-15M-001 (T022, CONGELADO ANTES de implementar)
+Estado: Aprobada por el usuario ("si apruebo tu recomendacion", 2026-10-14) tras cuatro
+revisiones de Codex (T022-R a T022-R4; la última: "casi listo para congelar", con un punto
+pendiente sobre la fórmula de "liquidez dudosa", que quedó resuelto en A.5).
+
+- **Documento:** EXPERIMENT_15M.md. Las secciones 1-20 las escribió el usuario. El Anexo A v4.1 es la especificación congelada.
+  - SHA-256 con finales de línea LF, tal como se guarda en Git: e0edd10afec01d6d636f91737db383b688bc1a179b0ce0bc28b71150e5138f92.
+  - Para comprobarlo: `git show <commit>:EXPERIMENT_15M.md | sha256sum`.
+- **Estrategia:**
+  - `donchian_signals` sobre cierres 15m de BTCUSDT, solo largo, 100 % del efectivo y capital de 10 000.
+  - 4 configuraciones: entry {48, 96} × exit {24, 48}.
+  - Selección global única por la mediana del Sharpe diario en 11 trimestres (2024-01 a 2026-09), escenario base (precedente D021).
+- **Costes:** los escenarios de D023. El spread va incluido en el slippage, sin doble cobro.
+- **Holdout prospectivo:** 2026-11-01 a 2027-01-31 UTC.
+  - El código se publica antes de descargar esos datos, y se abre una sola vez a partir del 2027-02-01.
+  - El periodo 2025-05-26 a 2026-09-30 (ya abierto en D024) solo se usa como validación.
+- **Criterios C1-C9:**
+  - Destaca C4: además del signo frente al baseline en bajo, base y alto, retorno propio > 0 en el escenario alto.
+  - Hay una prueba de exclusión y una lista cerrada de defectos críticos.
+  - Veredictos: VALIDADO, INCONCLUSO o RECHAZADO.
+- **Aislamiento:**
+  - Solo en un git worktree `C:/Users/thoma/bottrading-exp15m` (rama `experiment/15m`) con `.venv` propio. Nunca un checkout en esta carpeta: la tarea de las 08:00 ejecuta su código.
+  - Sin módulos de la demo.
+  - D030 NO cubre la candidata.
+- **Sin cambios en T019, T021, paper/ ni en el baseline.**
+- **Implementación:** requiere una aprobación explícita aparte del usuario.
+- **Cambios de reglas:** antes del holdout, solo con fecha y motivo y sin haberlo visto. Después del holdout, ninguno.
+
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
 - Ninguna abierta para la fase 2 (particiones fijadas en D020).

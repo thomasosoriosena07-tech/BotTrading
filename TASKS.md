@@ -73,6 +73,11 @@ holdout final, que se evalúa una sola vez (T017).
   (pendiente: informe de ejecución y revisión de Codex). Lectura (a) y
   envío de órdenes demo (b) aprobados. Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
+- [~] T022 — Experimento intradía 15m EXP-15M-001 (D031).
+  Protocolo CONGELADO (EXPERIMENT_15M.md, Anexo A v4.1).
+  Implementación pendiente de aprobación explícita, solo en el worktree
+  C:/Users/thoma/bottrading-exp15m. Holdout prospectivo 2026-11 a 2027-01,
+  abierto una vez desde 2027-02-01.
 
 ## Reglas
 - Marcar una tarea como completada solo después de verificarla.
@@ -1116,3 +1121,25 @@ informe), tests/test_demo_dashboard.py (nuevo), tests/test_demo_run.py, readme.m
   crearlo ni modificarlo). Límite aceptado y anotado en D030: manipulación local
   concurrente fuera del modelo de amenazas. Lo construido de F5 queda completo;
   falta solo acumular 30 días sin incidencias y después F6.
+
+## Registro T022: protocolo del experimento 15m (Claude Code, 2026-10-14)
+Archivos: EXPERIMENT_15M.md (nuevo; secciones 1-20 del usuario, Anexo A de
+Claude Code), DECISIONS.md (D031), TASKS.md. readme.md:148 corregido aparte
+(77051f9). Sin cambios de código; no se ejecutaron pruebas ni backtests.
+- Auditoría: el motor, los costes, el descargador (15m) y donchian_signals
+  se reutilizan. Faltan validador 15m, métricas nuevas, C8/C9 y la tubería
+  walk-forward 15m.
+- Riesgos verificados: un checkout de rama en esta carpeta haría que la
+  tarea de las 08:00 ejecutara código experimental (paper_daily.ps1:149
+  antes de :151), y el .venv editable apunta a este src. Por eso: worktree
+  y .venv propios. El holdout diario de D024 ya está abierto, así que el
+  holdout del experimento es prospectivo.
+- Revisiones de Codex: T022-R ("no listo"; citaba solo el texto del usuario),
+  T022-R2 (selección doble, huecos no causales, C6/C8/C9), T022-R3 (C9
+  exacto, liquidez, defecto crítico, días arrastrados) y T022-R4 ("casi listo
+  para congelar", con un punto pendiente: la fórmula del volumen). Todo
+  corregido en A.4-A.9; la fórmula quedó resuelta en A.5.
+- El usuario aprobó las decisiones de A.12. Objetivo de la sección 2 cambiado
+  a "mayor rentabilidad neta fuera de muestra"; C4 exige además retorno > 0
+  con costes altos.
+- Siguiente: aprobación explícita para implementar en el worktree.
