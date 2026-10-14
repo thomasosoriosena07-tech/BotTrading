@@ -67,8 +67,8 @@ holdout final, que se evalúa una sola vez (T017).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
   y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
   reconciliación reales OK; estado privado movido a
-  %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 hecho,
-  pendiente de Codex (guarda
+  %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 CERRADO
+  (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -840,3 +840,7 @@ DECISIONS.md (nota en D028), readme.md.
   línea, de referencia, abreviados, notas al pie e imágenes). Comprobado con
   el AST de report.py que ninguna función del informe de paper (incluidas
   las filas de puntos de control) emite corchetes. 675 passed.
+- Revisión de Codex de 54b2f17 (transmitida por el usuario): "listo". F2b-3
+  CERRADO. Riesgo anotado: un cambio futuro que introduzca corchetes en
+  report.md será rechazado por el validador (fallo cerrado, intencionado).
+  675 passed.
