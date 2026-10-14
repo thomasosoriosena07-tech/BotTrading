@@ -46,6 +46,14 @@ foreach ($n in 16, 17, 31, 32, 63, 64, 100, 128) {
     $masked = Hide-Secrets "fallo inesperado con $token al firmar"
     Check "E oculta una credencial de $n caracteres" ($masked -notlike "*$token*")
 }
+# Revision de Codex: tambien solo letras y solo digitos (validos para parse_credential).
+foreach ($n in 16, 31, 64, 128) {
+    foreach ($token in @(("a" * $n), ("1" * $n), ("Z" * $n))) {
+        $masked = Hide-Secrets "fallo con $token"
+        Check "E oculta $n caracteres de un solo tipo ($($token[0]))" ($masked -notlike "*$token*")
+    }
+}
+Check "E una secuencia de 15 no se toca" ((Hide-Secrets ("a" * 15)) -eq ("a" * 15))
 Check "E oculta SIGNATURE en mayusculas" ((Hide-Secrets "x?A=1&SIGNATURE=deadbeef") -notlike "*deadbeef*")
 # Lineas reales del log que no deben cambiar.
 foreach ($line in @(

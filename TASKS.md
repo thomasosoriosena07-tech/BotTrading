@@ -975,3 +975,10 @@ Archivos: scripts/demo_daily.ps1 (nuevo, ASCII), DECISIONS.md, readme.md.
   ya no distinguía mayúsculas). Pruebas test_daily_chain.ps1: 22/22, con
   longitudes 16, 17, 31, 32, 63, 64, 100 y 128, SIGNATURE en mayúsculas y
   líneas reales del log que no deben cambiar.
+- Revisión de Codex de df7affc (transmitida por el usuario): quedaban sin
+  tapar credenciales de 16-31 caracteres solo de letras o solo de dígitos.
+  Corregido: se tapa toda secuencia alfanumérica de 16 o más, de cualquier
+  composición (las líneas normales del log tienen separadores). Pruebas
+  test_daily_chain.ps1: 35/35, con tokens solo de letras, solo de dígitos y
+  mayúsculas de 16, 31, 64 y 128, una secuencia de 15 que no se toca y líneas
+  reales del log intactas.
