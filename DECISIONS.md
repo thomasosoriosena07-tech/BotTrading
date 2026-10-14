@@ -844,6 +844,22 @@ F4 (aprobación (b), 2026-10-13):
   completó (borrar .nuevo y conservar .anterior como histórico); si verifica
   con la ACTUAL, borrar .nuevo y .anterior (son copias) y repetir rekey.
   Nunca se edita la línea base a mano.
+
+F5 (aprobado por el usuario, 2026-10-13: "si hazlo como lo recomiendas ...
+quiero que automaticemos el bot lo mas rapido"):
+- Opción (a): scripts/demo_daily.ps1 es la SEGUNDA acción de la tarea
+  "BotTrading paper trading" (08:00 Colombia), después de paper_daily.ps1, y
+  usa los mismos datos ya descargados. Cambia el plan inicial de 00:05 UTC:
+  los archivos diarios de Binance se publican horas después de la medianoche
+  UTC, y así demo y paper usan exactamente las mismas velas. El retraso
+  frente a la apertura (~13 h) se medirá e informará.
+- El script activa --send-orders y BOTTRADING_DEMO_ORDERS=1 solo dentro de su
+  proceso; no publica nada en Git; log en reports/automation/demo_<fecha>.log.
+  Se detiene con el archivo STOP (kill switch) o ante cualquier discrepancia.
+- La tarea tiene StartWhenAvailable: si el PC está apagado a las 08:00, se
+  ejecuta al encender e iniciar sesión.
+- Pendiente de F5: informe de ejecución (precio previsto frente a ejecutado,
+  comisión, retraso, rechazos) y criterio de 30 días sin discrepancias.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
   evento): el comando se detiene con DETENIDO y no envía nada ese día.
 

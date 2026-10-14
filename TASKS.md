@@ -69,7 +69,9 @@ holdout final, que se evalúa una sola vez (T017).
   reconciliación reales OK; estado privado movido a
   %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 (guarda de
   publicación) CERRADO. F4: primera orden demo real ejecutada y repetición
-  sin duplicado (2026-10-14). Lectura (a) y envío de órdenes demo (b) aprobados. Fases
+  sin duplicado (2026-10-14). F5: demo automático cada día tras paper
+  (pendiente: informe de ejecución y revisión de Codex). Lectura (a) y
+  envío de órdenes demo (b) aprobados. Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
 ## Reglas
@@ -942,3 +944,17 @@ Por orden del usuario ("cambio hecho, envia la orden"):
   2026-08-17). Ejecución ~3 h 54 min después de la apertura de 00:00 UTC;
   la comparación de precio frente al modelo (apertura + 0,05 %) es parte de
   F5/F6. Esto valida la ejecución, no la rentabilidad.
+
+## Registro T021 F5: demo automático (Claude Code, 2026-10-13 23:0x)
+Aprobado por el usuario (opción (a) y "automaticemos el bot lo mas rapido").
+Archivos: scripts/demo_daily.ps1 (nuevo, ASCII), DECISIONS.md, readme.md.
+- demo_daily.ps1: activa el doble consentimiento solo en su proceso, ejecuta
+  run --send-orders, registra la salida y el código en
+  reports/automation/demo_<fecha>.log y retira la variable al terminar.
+- Prueba real a las 23:02: código 0, "Sin órdenes: la cuenta ya coincide con
+  la posición objetivo", reconciliación OK; la variable no quedó activa.
+- Tarea programada: segunda acción demo_daily.ps1 tras paper_daily.ps1;
+  StartWhenAvailable conservado (si el PC está apagado, corre al iniciar
+  sesión); próxima ejecución 2026-10-14 08:00.
+- Pendiente: informe de ejecución (previsto frente a ejecutado) y revisión
+  de Codex de este paso.
