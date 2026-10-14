@@ -533,3 +533,53 @@ def test_private_location_refuses_repo_onedrive_and_appdata(monkeypatch, private
     monkeypatch.setenv("USERPROFILE", str(home))
     with pytest.raises(StopTheDay, match="no permitida"):
         default_ledger_path()
+
+
+
+# --- revisión de Codex: el bloqueo no sigue enlaces -----------------------------------
+
+
+def test_lock_file_with_extra_hard_links_is_refused(tmp_path):
+    import os
+    lock = tmp_path / "orders.lock"
+    victim = tmp_path / "ajeno.txt"
+    victim.write_bytes(b"")
+    os.link(victim, lock)
+    with pytest.raises(StopTheDay, match="enlace"):
+        OrderLedger(tmp_path / "orders.csv", CLOCK, create=True)
+    assert victim.read_bytes() == b""
+
+
+def test_lock_file_swapped_after_validation_is_refused(tmp_path, monkeypatch):
+    # Simula que la entrada cambió entre abrir y comprobar (otra identidad).
+    import os
+    import bottrading.demo_ledger as ledger_module
+    (tmp_path / "orders.lock").write_bytes(b"")
+    real_fstat = os.fstat
+
+    def other_file(descriptor):
+        result = real_fstat(descriptor)
+        return os.stat_result((result.st_mode, result.st_ino + 1, *tuple(result)[2:10]))
+    monkeypatch.setattr(ledger_module.os, "fstat", other_file)
+    with pytest.raises(StopTheDay, match="enlace"):
+        OrderLedger(tmp_path / "orders.csv", CLOCK, create=True)
+
+
+def test_lock_file_symlink_is_never_followed(tmp_path):
+    victim = tmp_path / "no_debe_crearse.txt"
+    lock = tmp_path / "orders.lock"
+    try:
+        lock.symlink_to(victim)  # enlace roto
+    except OSError:
+        pytest.skip("crear enlaces simbólicos de archivo requiere modo desarrollador")
+    with pytest.raises(StopTheDay):
+        OrderLedger(tmp_path / "orders.csv", CLOCK, create=True)
+    assert not victim.exists()
+
+
+def test_normal_lock_file_is_reused_across_runs(tmp_path):
+    with OrderLedger(tmp_path / "orders.csv", CLOCK, create=True):
+        pass
+    assert (tmp_path / "orders.lock").exists()
+    with OrderLedger(tmp_path / "orders.csv", CLOCK) as again:
+        assert again.records() == {}

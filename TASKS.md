@@ -1098,3 +1098,14 @@ informe), tests/test_demo_dashboard.py (nuevo), tests/test_demo_run.py, readme.m
   diario (víctimas intactas); panel bloqueado con informe escrito; symlink
   real (se salta sin modo desarrollador). 746 passed, 2 skipped. report real
   OK, sin temporales sueltos.
+- Revisión de Codex de bf22cf6 (transmitida por el usuario): confirma la
+  escritura por reemplazo; quedaba el bloqueo, que abría orders.lock con
+  open("a+b") (sigue enlaces y puede crear el destino de un enlace roto).
+  Corregido (_open_lock_file): si no existe, creación exclusiva (O_EXCL, no
+  sigue enlaces); si existe, apertura sin crear y comprobación de que lo
+  abierto es esa entrada (no enlace, misma identidad, sin otros hard links);
+  si no, StopTheDay. Codex acepta el límite de la carpeta solo excluyendo la
+  manipulación local concurrente del modelo de amenazas: queda así anotado.
+  Pruebas: hard link en el bloqueo, cambio de identidad simulado, symlink
+  roto (se salta sin modo desarrollador), reutilización normal. 749 passed,
+  3 skipped. check real OK.

@@ -26,6 +26,7 @@ import csv
 import hashlib
 import io
 import os
+import stat
 import sys
 import time
 import uuid
@@ -201,6 +202,36 @@ class Gateway(Protocol):
 # --- instancia única ----------------------------------------------------------------
 
 
+def _open_lock_file(path: Path) -> int:
+    """Abre el archivo de bloqueo SIN seguir enlaces (revisión de Codex).
+
+    Nuevo: creación exclusiva (O_EXCL no sigue enlaces y falla aunque haya un
+    enlace roto con ese nombre). Existente: apertura sin crear nada y
+    comprobación de que lo abierto es exactamente esa entrada (no es un enlace,
+    misma identidad y sin otros hard links). Si no, se detiene.
+    """
+    flags = os.O_RDWR | getattr(os, "O_BINARY", 0)
+    try:
+        return os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        pass
+    descriptor = None
+    try:
+        descriptor = os.open(path, flags)  # sin O_CREAT: nunca crea el destino de un enlace
+    except OSError:
+        descriptor = None
+    if descriptor is None:
+        raise StopTheDay("archivo de bloqueo no utilizable (¿enlace roto?): detenerse")
+    opened, entry = os.fstat(descriptor), os.lstat(path)
+    same = (not stat.S_ISLNK(entry.st_mode) and stat.S_ISREG(opened.st_mode)
+            and (opened.st_ino, opened.st_dev) == (entry.st_ino, entry.st_dev)
+            and opened.st_nlink == 1)
+    if not same:
+        os.close(descriptor)
+        raise StopTheDay("el archivo de bloqueo es un enlace o tiene otros hard links: detenerse")
+    return descriptor
+
+
 class InstanceLock:
     """Bloqueo exclusivo NO bloqueante sobre orders.lock (revisión de Codex).
 
@@ -214,7 +245,7 @@ class InstanceLock:
 
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        handle = open(self.path, "a+b")
+        handle = os.fdopen(_open_lock_file(self.path), "r+b")
         locked = True
         try:
             handle.seek(0)
