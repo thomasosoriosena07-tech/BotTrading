@@ -767,3 +767,18 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   C:\Users\thoma\OneDrive y la ubicación real sigue aceptada. 579 passed.
 - Revisión de Codex de ae590b6 (transmitida por el usuario): guarda de
   ubicación CERRADA para los casos revisados. 579 passed.
+
+## Registro D028: primera ejecución automática con día nuevo (2026-10-13 21:40)
+- Tarea "BotTrading paper trading" lanzada a mano (Start-ScheduledTask) con
+  el acuerdo del usuario, en vez de esperar a las 08:00. Resultado 0.
+- Descargó el día 2026-10-13 de los tres símbolos; 1 operación nueva en el
+  diario (SOLUSDT sell, señal 2026-10-12, ejecución 2026-10-13 a 105.75);
+  ancla last_day=2026-10-13, rows=5.
+- Commit automático 8d08c1d "paper: datos hasta 2026-10-13 (automatico,
+  D028)" con solo los 5 archivos de paper/; publicado con el SHA fijado
+  (2178f79..8d08c1d) y origin/main igual a 8d08c1d. Ruta completa de commit
+  y push verificada.
+- Estado a 2026-10-13 (13 días): BTC dentro -0,84 % (igual que
+  buy-and-hold); ETH fuera -8,14 % frente a -7,28 %; SOL fuera -10,74 %
+  frente a -9,83 %. Demasiado pronto para concluir nada (D027).
+- Desbloquea F2b-3 (guarda de publicación), que modifica paper_daily.ps1.
