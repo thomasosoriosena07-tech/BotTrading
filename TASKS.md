@@ -834,3 +834,9 @@ DECISIONS.md (nota en D028), readme.md.
   versión tomaba "@media (" por una función; corregido. Pruebas: 91 del
   validador (+ las evasiones de Codex y variantes); guarda 24/24; archivos
   reales válidos. 670 passed.
+- Revisión de Codex de f308a43 (transmitida por el usuario): HTML, CSS y
+  commits pendientes cubiertos; faltaba cerrar los enlaces de referencia
+  Markdown. Corregido: report.md no admite corchetes (cierra enlaces en
+  línea, de referencia, abreviados, notas al pie e imágenes). Comprobado con
+  el AST de report.py que ninguna función del informe de paper (incluidas
+  las filas de puntos de control) emite corchetes. 675 passed.

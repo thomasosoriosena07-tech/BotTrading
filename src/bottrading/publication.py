@@ -111,8 +111,11 @@ def validate_files(files: dict[str, bytes]) -> None:
 
 def _validate_report(text: str) -> None:
     name = "paper/report.md"
-    if re.search(r"<\s*[A-Za-z!/?]", text) or "](" in text or EXTERNAL_URL.search(text) \
-            or LINKABLE.search(text):
+    # Sin corchetes (revisión de Codex): cierra enlaces en línea, de referencia
+    # ([x][ref] + [ref]: destino), abreviados, notas al pie e imágenes. El
+    # informe que genera report.py no usa corchetes.
+    if re.search(r"<\s*[A-Za-z!/?]", text) or "[" in text or "]" in text \
+            or EXTERNAL_URL.search(text) or LINKABLE.search(text):
         raise PublicationError(f"{name}: contiene HTML, enlaces, scripts o URLs externas")
 
 

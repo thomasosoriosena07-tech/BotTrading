@@ -285,6 +285,20 @@ def test_linkable_text_is_refused_in_report_and_dashboard(text):
         validate_files(dashboard_with(f"<p>{text}</p>"))
 
 
+@pytest.mark.parametrize("report", [
+    "Ver [ledger][ref]\n\n[ref]: paper/ledger.csv\n",  # revisión de Codex: referencia
+    "Ver [ledger]\n\n[ledger]: paper/ledger.csv\n",  # referencia abreviada
+    "Nota[^1]\n\n[^1]: detalle\n",  # nota al pie
+    "![grafico][img]\n\n[img]: x.png\n",
+    "[ref]: paper/ledger.csv\n",
+])
+def test_reference_links_footnotes_and_brackets_are_refused(report):
+    files = good_files()
+    files["paper/report.md"] = f"# Informe\n{report}".encode()
+    with pytest.raises(PublicationError, match="report.md"):
+        validate_files(files)
+
+
 def test_ordinary_report_text_with_file_names_is_accepted():
     files = good_files()
     files["paper/report.md"] = ("# Informe\nProtocolo en DECISIONS.md D027; datos en "
