@@ -24,6 +24,7 @@ Uso (F3, solo lectura; ver D030):
 
 import argparse
 import ctypes
+import functools
 import hashlib
 import hmac
 import http.client
@@ -442,6 +443,12 @@ class DemoClient:
                  transport: Transport = urllib_transport,
                  clock: Callable[[], float] = time.time, *,
                  consent: OrderConsent | None = None):
+        if transport is urllib_transport and credentials is not None:
+            # El transporte real recalcula la firma con ESTA credencial (la que firmó),
+            # no con la guardada por defecto: necesario en rekey, donde firma la clave
+            # nueva. Una petición hecha a mano y enviada directamente al transporte
+            # se sigue verificando con la credencial guardada.
+            transport = functools.partial(urllib_transport, credentials=credentials)
         self._credentials, self._transport, self._clock = credentials, transport, clock
         self._consent = consent  # solo grant_order_consent lo emite (D030)
 

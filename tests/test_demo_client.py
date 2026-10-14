@@ -206,6 +206,47 @@ def test_transport_default_reads_the_windows_credential(monkeypatch):
     assert calls == [1]
 
 
+class OkResponse:
+    status = 200
+
+    def __init__(self):
+        self.url = None
+
+    def read(self):
+        return b'{"balances": []}'
+
+    def geturl(self):
+        return self.url
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class EchoOpener:
+    def open(self, request, timeout):
+        response = OkResponse()
+        response.url = request.full_url
+        return response
+
+
+def test_real_transport_verifies_with_the_client_credential_not_the_stored_one(monkeypatch):
+    # Hallado al probar rekey de verdad: el cliente con la clave NUEVA era rechazado
+    # porque el transporte verificaba con la credencial guardada (la antigua).
+    monkeypatch.setattr(demo, "build_opener", lambda: EchoOpener())
+    stored = lambda: Credentials("ANTIGUAapiKEY0123456789abcdefAB", "ANTIGUOsecret0123456789abcdefAB")  # noqa: E731
+    monkeypatch.setattr(demo, "read_windows_credential", stored)
+    new = DemoClient(lambda: Credentials(API_KEY, SECRET), urllib_transport, CLOCK)
+    assert new.account() == {"balances": []}
+    # Una petición falsificada enviada directamente al transporte sigue verificándose
+    # con la credencial guardada.
+    forged, headers = prepared_with_headers()
+    with pytest.raises(RequestRefused):
+        urllib_transport(forged, headers)
+
+
 def test_signature_must_be_last_and_verified():
     url = signed_url()
     base, signature = url.split("&signature=")

@@ -903,3 +903,14 @@ readme.md.
   ENMASCARADO de la web. Binance solo muestra el secret al crear la clave:
   hay que crear otra y copiarlo en ese momento. Aún no se ha enviado ninguna
   orden.
+- Clave nueva guardada con formato correcto (diagnóstico: 64 + 64
+  alfanuméricos). Comprobación real de rekey respondiendo en blanco (sin
+  cambios): fallo propio encontrado, el transporte real verificaba la firma
+  con la credencial guardada por defecto (la antigua) y rechazaba el cliente
+  con la clave nueva. Corregido: DemoClient pasa su propio lector al
+  transporte real; una petición hecha a mano enviada directamente al
+  transporte se sigue verificando con la credencial guardada. Prueba con el
+  transporte real y la conexión sustituida. 713 passed.
+- Tras el arreglo, Binance responde a la clave nueva con HTTP 401, código
+  -2015 (clave, IP o permisos no válidos). Pendiente de que el usuario
+  revise dónde y cómo creó la clave. Estado privado sin cambios.
