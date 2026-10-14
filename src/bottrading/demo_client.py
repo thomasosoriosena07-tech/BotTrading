@@ -637,7 +637,11 @@ def _status(answer: Mapping) -> OrderStatus:
 
 # --- línea de comandos (F3 solo lectura; F4 run) -------------------------------------
 
-MAX_CLOCK_SKEW_MS = 1000  # Binance rechaza marcas >= 1 s por delante del servidor
+# Las peticiones se firman con la HORA DEL SERVIDOR (desfase medido al empezar
+# con /api/v3/time), así que la deriva del reloj de Windows no importa. Un
+# desfase mayor que este indica un reloj roto (podría equivocar la fecha del
+# día): se detiene.
+MAX_CLOCK_DRIFT_MS = 30_000
 CONFIRMATION_WORD = "INICIALIZAR"
 
 
@@ -676,8 +680,9 @@ def main(argv: Sequence[str] | None = None, *,
          new_credentials: Callable[[], Credentials] | None = None) -> int:
     """0 si todo está bien; 1 si hay que detenerse. Nunca muestra claves.
 
-    Todo comando comprueba primero el reloj (antes de cualquier petición
-    firmada) y, salvo el diagnóstico de check, el kill switch.
+    Todo comando mide primero el desfase con el servidor (antes de cualquier
+    petición firmada) y firma con la hora del servidor; salvo el diagnóstico
+    de check, comprueba antes el kill switch.
     """
     args = build_parser().parse_args(argv)
     command = args.command
@@ -691,7 +696,8 @@ def main(argv: Sequence[str] | None = None, *,
         client = DemoClient(credentials, transport, clock, consent=consent)
         if command != "check":
             _assert_no_kill_switch(paths)
-        _assert_clock(client, clock, out)
+        clock = _server_clock(client, clock, out)
+        client = DemoClient(credentials, transport, clock, consent=consent)
         if command == "run":
             return _run(client, credentials, clock, paths, out, send,
                         data_dir or REPO_ROOT / "data", sleep)
@@ -708,12 +714,15 @@ def main(argv: Sequence[str] | None = None, *,
     return 1
 
 
-def _assert_clock(client, clock, out) -> None:
+def _server_clock(client, clock, out) -> Callable[[], float]:
+    """Reloj corregido con la hora del servidor (D030: sincronizar con
+    /api/v3/time). Se detiene si el desfase es mayor que MAX_CLOCK_DRIFT_MS."""
     server_ms = client.server_time()  # pública, sin firma
     skew = int(clock() * 1000) - server_ms
-    out(f"Hora: desfase con el servidor {skew} ms")
-    if abs(skew) >= MAX_CLOCK_SKEW_MS:
+    out(f"Hora: desfase con el servidor {skew} ms (se firma con la hora del servidor)")
+    if abs(skew) >= MAX_CLOCK_DRIFT_MS:
         raise StopTheDay(f"reloj desfasado {skew} ms: sincroniza la hora de Windows")
+    return lambda: clock() - skew / 1000
 
 
 def _assert_no_kill_switch(paths: DemoPaths) -> None:

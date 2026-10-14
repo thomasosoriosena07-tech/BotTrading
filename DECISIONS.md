@@ -860,6 +860,11 @@ quiero que automaticemos el bot lo mas rapido"):
   Se detiene con el archivo STOP (kill switch) o ante cualquier discrepancia.
 - La tarea tiene StartWhenAvailable: si el PC está apagado a las 08:00, se
   ejecuta al encender e iniciar sesión.
+- Reloj (2026-10-14): Windows solo sincroniza la hora una vez por semana y el
+  reloj llegó a ir 1018 ms adelantado; el límite de 1000 ms detuvo demo. Ahora
+  se mide el desfase con /api/v3/time al empezar y se firma con la hora del
+  SERVIDOR (lo que recomienda Binance); la fecha del día también sale de esa
+  hora corregida. Se detiene si el desfase supera 30 s (reloj roto).
 - Pendiente de F5: informe de ejecución (precio previsto frente a ejecutado,
   comisión, retraso, rechazos) y criterio de 30 días sin discrepancias.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese

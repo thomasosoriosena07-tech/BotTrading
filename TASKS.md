@@ -982,3 +982,18 @@ Archivos: scripts/demo_daily.ps1 (nuevo, ASCII), DECISIONS.md, readme.md.
   test_daily_chain.ps1: 35/35, con tokens solo de letras, solo de dígitos y
   mayúsculas de 16, 31, 64 y 128, una secuencia de 15 que no se toca y líneas
   reales del log intactas.
+
+## Registro D028/F5: primera ejecución programada (2026-10-14)
+- El PC estuvo apagado a las 08:00 (apagado 23:20, encendido 10:29). La tarea
+  arrancó sola a las 10:33:58 gracias a StartWhenAvailable.
+- paper: código 0; no había día nuevo (el 13 ya se descargó y publicó la
+  noche anterior; el 14 aún no ha cerrado): "sin cambios en paper/".
+- demo: DETENIDO por seguridad, "reloj desfasado 1018 ms". Causa: Windows
+  sincroniza la hora una vez por semana (fuente "Local CMOS Clock"; w32tm
+  /resync exige administrador). Corregido en el bot: firma con la hora del
+  servidor y solo se detiene con más de 30 s de desfase. Pruebas: desfases de
+  1018, -1500 y 29000 ms firman con la hora del servidor; 31000 ms se detiene
+  antes de cualquier petición firmada. 716 passed.
+- check real con 1017 ms de desfase: OK. Paso demo de hoy ejecutado a mano:
+  "Sin órdenes" (BTC dentro; ETH y SOL fuera), reconciliación OK, código 0.
+- Recomendado al usuario: activar "Establecer la hora automáticamente".

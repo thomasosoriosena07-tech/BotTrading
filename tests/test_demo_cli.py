@@ -85,9 +85,34 @@ def test_missing_credential_stops_clearly(tmp_path):
     assert code == 1 and "DETENIDO: no se pudo leer la credencial" in text
 
 
-def test_clock_skew_stops(tmp_path):
-    code, text = run(tmp_path, "check", FakeDemo(server_ms=int(NOW * 1000) - 1500))
+def test_broken_clock_stops(tmp_path):
+    code, text = run(tmp_path, "check", FakeDemo(server_ms=int(NOW * 1000) - 31_000))
     assert code == 1 and "reloj desfasado" in text
+
+
+class Stamps(FakeDemo):
+    """Registra el timestamp de las peticiones firmadas."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.stamps = []
+
+    def __call__(self, request, headers):
+        params = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(request.url).query))
+        if "timestamp" in params:
+            self.stamps.append(int(params["timestamp"]))
+        return super().__call__(request, headers)
+
+
+@pytest.mark.parametrize("drift_ms", [1_018, -1_500, 29_000])
+def test_clock_drift_is_corrected_with_server_time(tmp_path, drift_ms):
+    # 2026-10-14: el reloj de Windows iba 1018 ms adelantado y demo se detuvo.
+    # Ahora se firma con la hora del servidor y la deriva no importa.
+    server_ms = int(NOW * 1000) - drift_ms
+    demo = Stamps(server_ms=server_ms)
+    code, text = run(tmp_path, "check", demo)
+    assert code == 0, text
+    assert demo.stamps and all(abs(stamp - server_ms) < 5 for stamp in demo.stamps)
 
 
 def test_kill_switch_is_shown_by_check_and_blocks_every_command(tmp_path):
@@ -155,7 +180,7 @@ class Recorder(FakeDemo):
 @pytest.mark.parametrize("command", ["check", "init", "reconcile"])
 def test_clock_is_checked_first_by_every_command(tmp_path, command):
     # Revisión de Codex: ninguna petición firmada antes de comprobar el reloj.
-    demo = Recorder(server_ms=int(NOW * 1000) + 1500)
+    demo = Recorder(server_ms=int(NOW * 1000) + 31_000)
     code, text = run(tmp_path, command, demo)
     assert code == 1 and "reloj desfasado" in text
     assert demo.paths == ["/api/v3/time"]
