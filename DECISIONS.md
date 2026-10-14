@@ -503,6 +503,13 @@ hacer commits automáticos.
   externa es el historial de Git en GitHub (un commit por día).
 - Para pararlo: deshabilitar o borrar la tarea programada.
 
+- Endurecido por F2b-3 (D030 punto 7, 2026-10-13): la tarea solo añade,
+  confirma y publica la lista CERRADA paper/ledger.csv, ledger.state,
+  report.md, equity.csv y dashboard.html (cualquier otro archivo, también
+  dentro de paper/, hace ajeno el commit); antes del push valida el
+  contenido del SHA fijado con bottrading.publication (esquemas cerrados,
+  ancla coherente, sin scripts ni URLs externas, sin patrones de claves).
+
 ## D029 — Panel HTML del paper trading
 Estado: Aprobada por el usuario ("sí, prepáralo", 2026-10-13).
 

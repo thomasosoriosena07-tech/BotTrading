@@ -67,7 +67,8 @@ holdout final, que se evalúa una sola vez (T017).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
   y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
   reconciliación reales OK; estado privado movido a
-  %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 (guarda
+  %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 hecho,
+  pendiente de Codex (guarda
   de publicación) después de verificar la primera ejecución automática
   de paper, porque modifica scripts/paper_daily.ps1. Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
@@ -782,3 +783,27 @@ módulo, para mantener exactamente dos módulos con red), tests/test_demo_cli.py
   buy-and-hold); ETH fuera -8,14 % frente a -7,28 %; SOL fuera -10,74 %
   frente a -9,83 %. Demasiado pronto para concluir nada (D027).
 - Desbloquea F2b-3 (guarda de publicación), que modifica paper_daily.ps1.
+
+## Registro T021 F2b-3: guarda de publicación (Claude Code, 2026-10-13)
+Archivos: scripts/paper_daily.ps1, scripts/test_paper_daily_guard.ps1,
+src/bottrading/publication.py (nuevo), tests/test_publication.py (nuevo),
+DECISIONS.md (nota en D028), readme.md.
+- Lista cerrada de rutas exactas ($PublishablePaths, sensible a mayúsculas):
+  git add/commit solo de esas rutas; un commit o una diferencia acumulada
+  con cualquier otro archivo (también dentro de paper/) es ajeno y no se
+  publica. Get-UnpushedNonPaperFiles pasa a Get-UnpushedUnlistedFiles.
+- Assert-PublishableContent: antes del push extrae la lista del SHA fijado
+  con git archive (sin conversión de finales de línea: se validan los bytes
+  guardados, que son los publicados) y la valida con
+  python -m bottrading.publication: esquemas cerrados de ledger.csv y
+  equity.csv, ancla coherente (rows y sha256), report.md y dashboard.html
+  en UTF-8 sin <script> ni URLs externas, tamaño acotado y, como defensa
+  adicional, sin patrones de credenciales.
+- Hallazgo durante las pruebas: git archive aplicaba core.autocrlf y el
+  resultado dependía de la configuración del repositorio; corregido con
+  -c core.autocrlf=false -c core.eol=lf.
+- Pruebas: guarda 21/21 (16 anteriores + K archivo de paper/ fuera de la
+  lista, mayúsculas, M contenido real válido, N ancla incoherente);
+  publication 35 pruebas; el HEAD real es publicable. 614 passed.
+- La tarea de mañana 08:00 ya usa esta versión. Si algo fallara, se detiene
+  antes del push (el commit queda local) y queda en el log.

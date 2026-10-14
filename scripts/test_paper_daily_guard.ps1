@@ -48,14 +48,14 @@ git checkout -q main
 git merge -q --no-ff otra -m "paper: datos hasta 2026-10-16 (automatico, D028)" 2>$null
 $merge = git rev-parse HEAD
 Check "G el merge cuenta como ajeno" (@(Get-UnpushedForeignCommits) -contains $merge)
-Check "G la diferencia acumulada detecta ajeno.txt" (@(Get-UnpushedNonPaperFiles) -contains "ajeno.txt")
+Check "G la diferencia acumulada detecta ajeno.txt" (@(Get-UnpushedUnlistedFiles) -contains "ajeno.txt")
 $threw = $false; try { Assert-SafeToCommit } catch { $threw = $true }
 Check "G Assert lanza" $threw
 git reset -q --hard origin/main
 
 # H: diferencia acumulada solo con paper/ -> vacia.
 "f" | Out-File paper/ledger.csv; git add paper; git commit -q -m "paper: datos hasta 2026-10-17 (automatico, D028)"
-Check "H solo paper/ -> sin archivos ajenos" (@(Get-UnpushedNonPaperFiles).Count -eq 0)
+Check "H solo paper/ -> sin archivos ajenos" (@(Get-UnpushedUnlistedFiles).Count -eq 0)
 git reset -q --hard origin/main
 
 # I (revision de Codex): carrera. Se fija y valida el SHA; otro proceso
@@ -76,6 +76,30 @@ git reset -q --hard origin/main
 "h" | Out-File paper/ledger.csv; git add paper; git commit -q -m "paper: datos hasta 2026-10-19 (automatico, D028)"
 $threw = $false; try { Get-ValidatedTip | Out-Null } catch { $threw = $true }
 Check "J Get-ValidatedTip lanza si hay un ajeno debajo" $threw
+git reset -q --hard origin/main
+
+# K (F2b-3): archivo dentro de paper/ pero fuera de la lista cerrada -> ajeno.
+"extra" | Out-File paper/extra.txt; "k" | Out-File paper/ledger.csv; git add paper
+git commit -q -m "paper: datos hasta 2026-10-20 (automatico, D028)"
+Check "K archivo de paper/ fuera de la lista -> commit ajeno" (@(Get-UnpushedForeignCommits).Count -eq 1)
+Check "K la diferencia acumulada lo detecta" (@(Get-UnpushedUnlistedFiles) -contains "paper/extra.txt")
+Check "K lista exacta y sensible a mayusculas" ((Test-Publishable "paper/ledger.csv") -and
+    -not (Test-Publishable "paper/Ledger.csv") -and -not (Test-Publishable "paper/ledger.csv.bak"))
+git reset -q --hard origin/main
+Remove-Item -Force paper/extra.txt -ErrorAction SilentlyContinue
+
+# M y N (F2b-3): contenido del SHA fijado validado con bottrading.publication.
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+foreach ($f in $PublishablePaths) { Copy-Item (Join-Path $repoRoot $f) $f -Force }
+git add -- @PublishablePaths; git commit -q -m "paper: datos hasta 2026-10-21 (automatico, D028)"
+$threw = $false; try { Assert-PublishableContent (git rev-parse HEAD) $python } catch { $threw = $true }
+Check "M contenido real valido -> no lanza" (-not $threw)
+$state = Get-Content paper/ledger.state -Raw
+[IO.File]::WriteAllText((Join-Path (Get-Location) "paper/ledger.state"), ($state -replace "rows=\d+", "rows=999"))
+git add -- paper/ledger.state; git commit -q -m "paper: datos hasta 2026-10-22 (automatico, D028)"
+$threw = $false; try { Assert-PublishableContent (git rev-parse HEAD) $python } catch { $threw = $_.ToString() -like "*no publicable*" }
+Check "N ancla incoherente -> lanza antes del push" $threw
 git reset -q --hard origin/main
 
 Check "F nada preparado -> false" (-not (Test-PaperStaged))

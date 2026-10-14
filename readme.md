@@ -136,6 +136,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `demo_client.py` | Cliente de solo lectura para Binance Spot Demo (D030; aún sin uso real) |
 | `demo_ledger.py` | Registro privado de órdenes demo y protocolo idempotente (sin envío real) |
 | `demo_reconcile.py` | Línea base y reconciliación de la cuenta demo (solo lectura) |
+| `publication.py` | Valida el contenido que la tarea diaria publica (lista cerrada) |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |
