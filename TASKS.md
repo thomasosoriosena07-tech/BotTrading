@@ -914,3 +914,13 @@ readme.md.
 - Tras el arreglo, Binance responde a la clave nueva con HTTP 401, código
   -2015 (clave, IP o permisos no válidos). Pendiente de que el usuario
   revise dónde y cómo creó la clave. Estado privado sin cambios.
+- Causa del -2015: la clave se había creado en la cuenta REAL de Binance, no
+  en Demo Trading (el bot solo habla con demo-api, que la rechazó). Se pidió
+  al usuario borrarla en binance.com. Nueva clave creada en Demo Trading:
+  formato correcto; rekey sin confirmar: lectura firmada OK y línea base
+  verificada con la clave actual.
+- rekey ejecutado con REFIRMAR por orden del usuario ("continua"): línea base
+  firmada con la clave nueva; copia baseline.json.anterior. (Canalizar la
+  palabra desde PowerShell 5.1 añade caracteres invisibles y el comando
+  cancela sin cambios; desde bash funciona.) Pendiente: el usuario sustituye
+  la credencial BotTrading-Demo por la nueva y borra BotTrading-Demo-Nueva.
