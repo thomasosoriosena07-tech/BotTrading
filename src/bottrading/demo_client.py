@@ -58,6 +58,7 @@ from bottrading.demo_ledger import (
 from bottrading.demo_reconcile import (
     load_baseline,
     reconcile,
+    resign_baseline,
     save_baseline,
     symbol_info,
     take_baseline,
@@ -78,6 +79,7 @@ DEMO_HOST = "demo-api.binance.com"
 BASE_URL = f"https://{DEMO_HOST}"
 API_KEY_HEADER = "X-MBX-APIKEY"
 CREDENTIAL_TARGET = "BotTrading-Demo"
+NEW_CREDENTIAL_TARGET = "BotTrading-Demo-Nueva"  # solo durante una rotación (rekey)
 RECV_WINDOW_MS = 5000  # D030: <= 5000
 ORDERS_ENV = "BOTTRADING_DEMO_ORDERS"
 TIMEOUT_SECONDS = 10
@@ -400,32 +402,37 @@ def _retry_after(headers) -> int | None:
 class OrderConsent:
     """Permiso para enviar órdenes a la cuenta DEMO en este proceso.
 
-    Solo vale si lo emitió grant_order_consent, que exige el flag
-    --send-orders Y la variable BOTTRADING_DEMO_ORDERS=1. Un objeto construido
-    a mano se rechaza (registro de identidades). Dentro de un proceso de Python
-    nada es infalsificable: saltárselo exige usar a propósito el registro
-    privado, y un test estático comprueba que solo main() emite permisos.
+    Solo vale si lo emitió _grant_order_consent desde main(), con el flag
+    --send-orders del comando Y la variable BOTTRADING_DEMO_ORDERS=1 del
+    entorno REAL del proceso (os.environ; quien llama no puede elegir los
+    valores; revisión de Codex). La variable se vuelve a leer en cada envío.
+    Un objeto construido a mano se rechaza (registro de identidades). Límite:
+    dentro de un proceso de Python nada es infalsificable; saltárselo exige
+    usar a propósito funciones privadas o cambiar el entorno del proceso, y un
+    test estático comprueba que solo main() emite permisos.
     """
-
-    environ: Mapping[str, str] = field(repr=False)
 
 
 _ISSUED_CONSENTS: "weakref.WeakSet[OrderConsent]" = weakref.WeakSet()
 
 
-def grant_order_consent(send_orders: bool, environ: Mapping[str, str]) -> OrderConsent | None:
+def _orders_enabled_in_environment() -> bool:
+    return os.environ.get(ORDERS_ENV) == "1"
+
+
+def _grant_order_consent(send_orders: bool) -> OrderConsent | None:
     """Doble consentimiento de D030; None si falta cualquiera de los dos."""
-    if not (send_orders is True and environ.get(ORDERS_ENV) == "1"):
+    if not (send_orders is True and _orders_enabled_in_environment()):
         return None
-    consent = OrderConsent(environ)
+    consent = OrderConsent()
     _ISSUED_CONSENTS.add(consent)
     return consent
 
 
 def _consent_is_valid(consent: object) -> bool:
-    # Emitido aquí y con la variable todavía activa en el momento de enviar.
+    # Emitido por main() y con la variable todavía activa al enviar.
     return (isinstance(consent, OrderConsent) and consent in _ISSUED_CONSENTS
-            and consent.environ.get(ORDERS_ENV) == "1")
+            and _orders_enabled_in_environment())
 
 
 class DemoClient:
@@ -644,7 +651,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="python -m bottrading.demo_client",
         description="Cuenta Binance Spot DEMO (D030). Solo envía órdenes con run, "
                     f"--send-orders y {ORDERS_ENV}=1.")
-    parser.add_argument("command", choices=("check", "init", "reconcile", "run"))
+    parser.add_argument("command", choices=("check", "init", "reconcile", "run", "rekey"))
     parser.add_argument("--send-orders", action="store_true",
                         help="run: envía de verdad (exige también la variable de entorno)")
     return parser
@@ -657,9 +664,9 @@ def main(argv: Sequence[str] | None = None, *,
          paths: DemoPaths | None = None,
          ask: Callable[[str], str] = input,
          out: Callable[[str], None] = print,
-         environ: Mapping[str, str] | None = None,
          data_dir: Path | None = None,
-         sleep: Callable[[float], None] = time.sleep) -> int:
+         sleep: Callable[[float], None] = time.sleep,
+         new_credentials: Callable[[], Credentials] | None = None) -> int:
     """0 si todo está bien; 1 si hay que detenerse. Nunca muestra claves.
 
     Todo comando comprueba primero el reloj (antes de cualquier petición
@@ -667,10 +674,9 @@ def main(argv: Sequence[str] | None = None, *,
     """
     args = build_parser().parse_args(argv)
     command = args.command
-    environ = os.environ if environ is None else environ
     # Doble consentimiento (D030): solo elige entre simulación y envío DENTRO de
     # demo; el host y la tabla de peticiones siguen fijos.
-    consent = grant_order_consent(args.send_orders, environ) if command == "run" else None
+    consent = _grant_order_consent(args.send_orders) if command == "run" else None
     send = consent is not None
     failure = None
     try:
@@ -682,6 +688,9 @@ def main(argv: Sequence[str] | None = None, *,
         if command == "run":
             return _run(client, credentials, clock, paths, out, send,
                         data_dir or REPO_ROOT / "data", sleep)
+        if command == "rekey":
+            reader = new_credentials or (lambda: read_windows_credential(NEW_CREDENTIAL_TARGET))
+            return _rekey(credentials, reader, transport, clock, paths, ask, out)
         handler = {"check": _check, "init": _init, "reconcile": _reconcile}[command]
         return handler(client, credentials, clock, paths, ask, out)
     except (DemoClientError, StopTheDay, LedgerIntegrityError, LimitExceeded) as error:
@@ -715,7 +724,7 @@ def _check(client, credentials, clock, paths, ask, out) -> int:
     assets = sorted(b["asset"] for b in account.get("balances", []))
     out(f"Cuenta: {len(assets)} activos con saldo ({', '.join(assets)}); "
         f"canTrade de la CUENTA = {account.get('canTrade')} "
-        "(el permiso de la CLAVE se comprueba en la web: debe ser solo lectura)")
+        "(los permisos de la CLAVE se gestionan en la web de Binance Demo)")
     active = paths.kill_switch.exists()
     out(f"Kill switch ({paths.kill_switch.name}): {'ACTIVO' if active else 'inactivo'}")
     _assert_no_kill_switch(paths)
@@ -766,6 +775,34 @@ def _reconcile(client, credentials, clock, paths, ask, out) -> int:
     for symbol, holding in sorted(result.holdings.items()):
         out(f"  {symbol}: efectivo {holding.cash:.2f} USDT, cantidad {holding.quantity}, "
             f"coste {holding.cost:.2f}")
+    return 0
+
+
+REKEY_WORD = "REFIRMAR"
+
+
+def _rekey(credentials, new_credentials, transport, clock, paths, ask, out) -> int:
+    """Rotación de clave: la línea base pasa a firmarse con la clave nueva.
+
+    La clave nueva se guarda antes en el Administrador de credenciales como
+    BotTrading-Demo-Nueva. Se comprueba que funciona (lectura firmada), se
+    verifica la línea base con la clave actual y se vuelve a firmar.
+    """
+    old, new = credentials(), new_credentials()
+    if hmac.compare_digest(old.secret, new.secret):
+        raise StopTheDay("la clave nueva es igual a la actual: no hay nada que rotar")
+    DemoClient(new_credentials, transport, clock).account()  # la clave nueva funciona
+    out("Clave nueva: lectura firmada OK (valor oculto)")
+    load_baseline(paths.baseline, old.secret)
+    out("Línea base: verificada con la clave actual")
+    if ask(f"Escribe {REKEY_WORD} para volver a firmarla con la clave nueva: ").strip() \
+            != REKEY_WORD:
+        out("Cancelado: no se ha cambiado nada.")
+        return 1
+    resign_baseline(paths.baseline, old.secret, new.secret)
+    out("Línea base firmada con la clave nueva (copia anterior: baseline.json.anterior).")
+    out(f"Ahora sustituye la credencial: cmdkey /delete:{CREDENTIAL_TARGET}, vuelve a")
+    out(f"crearla con la clave nueva y borra {NEW_CREDENTIAL_TARGET}.")
     return 0
 
 

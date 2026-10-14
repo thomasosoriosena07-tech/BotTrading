@@ -876,3 +876,18 @@ readme.md.
   se rechaza; test estático de quién emite permisos. Codex confirmó el resto
   (validación de órdenes, gateway, ids deterministas, límites, orden de run,
   redondeo). 709 passed. Sigue sin enviarse ninguna orden.
+- Revisión de Codex de b0301dd (transmitida por el usuario): la función
+  pública grant_order_consent permitía crear el permiso con valores elegidos
+  por quien llama. Corregido: pasa a _grant_order_consent(send_orders), que
+  lee el os.environ REAL del proceso (sin parámetro de entorno); main() ya no
+  acepta un entorno inyectado; la variable se relee en cada envío; OrderConsent
+  no lleva datos. Límite documentado: dentro de un proceso nada es
+  infalsificable (cambiar el entorno o usar funciones privadas a propósito).
+- El usuario tuvo que crear una clave NUEVA con permiso de trading (no se
+  podía editar la existente). La credencial guardada seguía siendo la antigua
+  (check real: reconciliación OK con su HMAC). Añadido `rekey`: comprueba la
+  clave nueva (BotTrading-Demo-Nueva) con una lectura firmada, verifica la
+  línea base con la actual, pide REFIRMAR, guarda baseline.json.anterior y la
+  vuelve a firmar con la nueva (mismo contenido). Pruebas: rotación correcta,
+  sin confirmación, clave igual, clave nueva que no funciona y línea base que
+  no verifica con la clave actual: en todos los casos no cambia nada. 712 passed.

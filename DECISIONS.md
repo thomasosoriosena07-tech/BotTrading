@@ -819,10 +819,12 @@ Fases (T021)
 
 F4 (aprobación (b), 2026-10-13):
 - POST y DELETE /api/v3/order entran en la tabla cerrada; solo un DemoClient
-  con un OrderConsent EMITIDO por grant_order_consent puede prepararlos, y
-  solo main() lo emite, con `run --send-orders` y BOTTRADING_DEMO_ORDERS=1
-  (la variable se vuelve a comprobar en cada envío; un permiso fabricado a
-  mano se rechaza; revisión de Codex). Solo MARKET; compra por quoteOrderQty
+  con un OrderConsent EMITIDO por la función privada _grant_order_consent
+  puede prepararlos; solo main() lo emite, con `run --send-orders` y la
+  variable BOTTRADING_DEMO_ORDERS=1 del entorno REAL del proceso (quien llama
+  no puede elegir los valores; la variable se relee en cada envío; un
+  permiso fabricado a mano se rechaza; revisiones de Codex). Solo MARKET;
+  compra por quoteOrderQty
   (céntimos, hacia abajo), venta por quantity (stepSize, hacia abajo).
 - Posición objetivo = estado de la estrategia congelada (última señal BUY o
   SELL con velas cerradas hasta ayer). La intención usa la fecha de esa señal:
@@ -830,9 +832,12 @@ F4 (aprobación (b), 2026-10-13):
   (señal 2026-08-17) y ETH y SOL "fuera": la primera orden es BUY de BTC.
 - Límites por día de EJECUCIÓN (cada activo puede alinearse con una señal de
   otra fecha); las intenciones ya registradas no cuentan dos veces.
-- Clave: en lugar de una clave nueva, se activa el permiso de trading en la
-  clave demo existente (el secreto no cambia y la línea base sigue firmada).
-  Si Binance no lo permitiera, se haría la rotación prevista con nueva firma.
+- Clave: Binance obligó a crear una clave NUEVA con permiso de trading. Se
+  hace la rotación prevista: comando `rekey` (la clave nueva se guarda antes
+  como BotTrading-Demo-Nueva; se comprueba con una lectura firmada; la línea
+  base se verifica con la clave actual y se vuelve a firmar con la nueva,
+  con confirmación REFIRMAR y copia baseline.json.anterior); después el
+  usuario sustituye BotTrading-Demo por la clave nueva.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
   evento): el comando se detiene con DETENIDO y no envía nada ese día.
 

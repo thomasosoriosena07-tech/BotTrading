@@ -199,3 +199,69 @@ def test_io_and_corrupt_file_errors_become_detenido(tmp_path):
     code = main(["init"], credentials=fake_credentials, transport=FakeDemo(), clock=lambda: NOW,
                 paths=paths, ask=lambda prompt: CONFIRMATION_WORD, out=lines.append)
     assert code == 1 and lines[-1].startswith("DETENIDO: ")
+
+
+# --- rotación de clave (rekey) ---------------------------------------------------------
+
+NEW_KEY = "NUEVAapiKEY0123456789abcdefABCDE"
+NEW_SECRET = "NUEVOsecret9876543210zyxwvuZYXWV"
+
+
+def new_credentials():
+    return Credentials(NEW_KEY, NEW_SECRET)
+
+
+def rekey(tmp_path, answer="REFIRMAR", new=new_credentials, demo=None):
+    lines = []
+    paths = DemoPaths(tmp_path / "orders.csv", tmp_path / "baseline.json", tmp_path / "STOP")
+    code = main(["rekey"], credentials=fake_credentials, new_credentials=new,
+                transport=demo or FakeDemo(), clock=lambda: NOW, paths=paths,
+                ask=lambda prompt: answer, out=lines.append)
+    text = "\n".join(lines)
+    for secret in (API_KEY, SECRET, NEW_KEY, NEW_SECRET):
+        assert secret not in text
+    return code, text
+
+
+def test_rekey_resigns_the_baseline_with_the_new_secret(tmp_path):
+    from bottrading.demo_reconcile import load_baseline
+    run(tmp_path, "init")
+    before = load_baseline(tmp_path / "baseline.json", SECRET)
+    code, text = rekey(tmp_path)
+    assert code == 0 and "firmada con la clave nueva" in text
+    assert load_baseline(tmp_path / "baseline.json", NEW_SECRET) == before  # mismo contenido
+    with pytest.raises(Exception, match="HMAC"):
+        load_baseline(tmp_path / "baseline.json", SECRET)
+    assert load_baseline(tmp_path / "baseline.json.anterior", SECRET) == before
+
+
+def test_rekey_needs_confirmation_a_different_working_key_and_a_valid_baseline(tmp_path):
+    from bottrading.demo_reconcile import load_baseline
+    run(tmp_path, "init")
+    original = (tmp_path / "baseline.json").read_bytes()
+    code, text = rekey(tmp_path, answer="si")
+    assert code == 1 and "no se ha cambiado nada" in text
+    code, text = rekey(tmp_path, new=fake_credentials)
+    assert code == 1 and "igual a la actual" in text
+
+    class Refuses(FakeDemo):
+        def __call__(self, request, headers):
+            if request.path == "/api/v3/account":
+                return Response(401, b'{"code":-2015,"msg":"x"}', request.url)
+            return super().__call__(request, headers)
+    code, text = rekey(tmp_path, demo=Refuses())
+    assert code == 1 and "DETENIDO" in text
+    assert (tmp_path / "baseline.json").read_bytes() == original
+    assert not (tmp_path / "baseline.json.anterior").exists()
+    assert load_baseline(tmp_path / "baseline.json", SECRET)
+
+
+def test_rekey_stops_if_the_baseline_does_not_verify_with_the_current_key(tmp_path):
+    run(tmp_path, "init")
+    lines = []
+    paths = DemoPaths(tmp_path / "orders.csv", tmp_path / "baseline.json", tmp_path / "STOP")
+    code = main(["rekey"], credentials=new_credentials,
+                new_credentials=lambda: Credentials(API_KEY + "X", SECRET + "X"),
+                transport=FakeDemo(), clock=lambda: NOW, paths=paths,
+                ask=lambda prompt: "REFIRMAR", out=lines.append)
+    assert code == 1 and "HMAC" in "\n".join(lines)

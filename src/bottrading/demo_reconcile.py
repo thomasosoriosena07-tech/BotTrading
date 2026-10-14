@@ -150,6 +150,36 @@ def save_baseline(path: Path, baseline: Baseline, secret: str) -> None:
         os.fsync(handle.fileno())
 
 
+def resign_baseline(path: Path, old_secret: str, new_secret: str) -> None:
+    """Rotación de clave (D030): verifica la línea base con el secreto ANTERIOR
+    y la vuelve a firmar con el NUEVO sin tocar su contenido. Guarda una copia
+    exclusiva de la versión anterior; nunca crea una línea base nueva."""
+    load_baseline(path, old_secret)  # detiene si no verifica con la clave anterior
+    original = path.read_bytes()
+    document = json.loads(original.decode("utf-8"))
+    document.pop("hmac")
+    document["hmac"] = _baseline_mac(new_secret, document)
+    backup = path.with_name(path.name + ".anterior")
+    created = True
+    try:
+        handle = open(backup, "xb")
+    except FileExistsError:
+        created = False
+    if not created:
+        raise StopTheDay("ya existe una copia de una rotación anterior: revisarla antes")
+    with handle:
+        handle.write(original)
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary = path.with_name(path.name + ".nuevo")
+    with open(temporary, "xb") as handle:
+        handle.write((json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+    load_baseline(path, new_secret)  # comprobación final
+
+
 def load_baseline(path: Path, secret: str) -> Baseline:
     if not path.exists():
         raise StopTheDay("no hay línea base: inicializa la cuenta demo de forma explícita")

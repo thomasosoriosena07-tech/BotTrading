@@ -2,6 +2,7 @@
 
 import json
 import math
+import os
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from decimal import ROUND_DOWN, Decimal
@@ -11,7 +12,7 @@ import pytest
 from bottrading.demo_client import (
     ORDERS_ENV,
     OrderConsent,
-    grant_order_consent,
+    _grant_order_consent,
     Credentials,
     DemoApiError,
     DemoClient,
@@ -53,7 +54,14 @@ def credentials():
     return Credentials(API_KEY, SECRET)
 
 
-CONSENT = grant_order_consent(True, {ORDERS_ENV: "1"})
+@pytest.fixture(autouse=True)
+def orders_enabled(monkeypatch):
+    """Variable real del proceso activa por defecto; cada prueba puede retirarla."""
+    monkeypatch.setenv(ORDERS_ENV, "1")
+
+
+def consent_now():
+    return _grant_order_consent(True)
 
 
 class Exchange:
@@ -144,9 +152,18 @@ def world(tmp_path):
 def run(world, command="run", *flags, env=None, answer="INICIALIZAR"):
     data, paths, exchange = world
     lines = []
-    code = main([command, *flags], credentials=credentials, transport=exchange,
-                clock=lambda: NOW, paths=paths, ask=lambda prompt: answer, out=lines.append,
-                environ=env or {}, data_dir=data, sleep=lambda s: None)
+    # El permiso lee el entorno REAL del proceso (revisión de Codex).
+    previous = os.environ.pop(ORDERS_ENV, None)
+    if env and ORDERS_ENV in env:
+        os.environ[ORDERS_ENV] = env[ORDERS_ENV]
+    try:
+        code = main([command, *flags], credentials=credentials, transport=exchange,
+                    clock=lambda: NOW, paths=paths, ask=lambda prompt: answer,
+                    out=lines.append, data_dir=data, sleep=lambda s: None)
+    finally:
+        os.environ.pop(ORDERS_ENV, None)
+        if previous is not None:
+            os.environ[ORDERS_ENV] = previous
     text = "\n".join(lines)
     assert API_KEY not in text and SECRET not in text and "signature" not in text
     return code, text
@@ -202,7 +219,7 @@ def test_kill_switch_and_stale_data_block_before_any_order(world, tmp_path):
     lines = []
     code = main(["run", "--send-orders"], credentials=credentials, transport=exchange,
                 clock=lambda: NOW, paths=paths, out=lines.append,
-                environ={ORDERS_ENV: "1"}, data_dir=stale, sleep=lambda s: None)
+                data_dir=stale, sleep=lambda s: None)
     assert code == 1 and "ejecuta antes la descarga" in "\n".join(lines)
     assert exchange.posts() == []
 
@@ -302,7 +319,7 @@ class Scripted:
 
 
 def gateway(get=None, post=None):
-    client = DemoClient(credentials, Scripted(get, post), lambda: NOW, consent=CONSENT)
+    client = DemoClient(credentials, Scripted(get, post), lambda: NOW, consent=consent_now())
     return DemoGateway(client, STEPS)
 
 
@@ -353,7 +370,7 @@ def test_order_parameters_are_validated_before_the_transport(params, ok):
     def must_not_send(request, headers):
         raise AssertionError("no debía enviarse")
     client = DemoClient(credentials, must_not_send if not ok else Scripted(
-        post=(200, {"status": "FILLED", "executedQty": "1"})), lambda: NOW, consent=CONSENT)
+        post=(200, {"status": "FILLED", "executedQty": "1"})), lambda: NOW, consent=consent_now())
     side = params.pop("side")
     call = lambda: client.new_market_order("BTCUSDT", side, "bt-BTCUSDT-20261012-B",  # noqa: E731
                                           **params)
@@ -365,7 +382,7 @@ def test_order_parameters_are_validated_before_the_transport(params, ok):
 
 
 def test_order_ids_and_types_are_closed():
-    client = DemoClient(credentials, Scripted(post=(200, {})), lambda: NOW, consent=CONSENT)
+    client = DemoClient(credentials, Scripted(post=(200, {})), lambda: NOW, consent=consent_now())
     for bad_id in ("manual-1", "bt-x y", ""):
         with pytest.raises(RequestRefused):
             client.new_market_order("BTCUSDT", "BUY", bad_id, quote_order_qty="10")
@@ -377,31 +394,33 @@ def test_order_ids_and_types_are_closed():
 # --- revisión de Codex de F4: el permiso de escritura no es un booleano público -------
 
 
-def test_consent_requires_both_the_flag_and_the_environment_variable():
-    assert grant_order_consent(True, {ORDERS_ENV: "1"}) is not None
-    for flag, env in ((False, {ORDERS_ENV: "1"}), (True, {}), (True, {ORDERS_ENV: "true"}),
-                      (1, {ORDERS_ENV: "1"}), ("yes", {ORDERS_ENV: "1"})):
-        assert grant_order_consent(flag, env) is None
+def test_consent_requires_both_the_flag_and_the_real_environment(monkeypatch):
+    assert _grant_order_consent(True) is not None
+    for flag in (False, 1, "yes"):
+        assert _grant_order_consent(flag) is None
+    for value in (None, "true", "0", " 1"):
+        if value is None:
+            monkeypatch.delenv(ORDERS_ENV)
+        else:
+            monkeypatch.setenv(ORDERS_ENV, value)
+        assert _grant_order_consent(True) is None
 
 
 def test_hand_built_consent_or_old_trading_flag_cannot_send():
     def must_not_send(request, headers):
         raise AssertionError("no debía enviarse")
-    forged = DemoClient(credentials, must_not_send, lambda: NOW,
-                        consent=OrderConsent({ORDERS_ENV: "1"}))
+    forged = DemoClient(credentials, must_not_send, lambda: NOW, consent=OrderConsent())
     with pytest.raises(RequestRefused, match="solo lectura"):
         forged.new_market_order("BTCUSDT", "BUY", "bt-BTCUSDT-20261012-B", quote_order_qty="10")
     with pytest.raises(TypeError):
         DemoClient(credentials, must_not_send, lambda: NOW, trading=True)
 
 
-def test_consent_is_rechecked_at_send_time():
+def test_consent_is_rechecked_at_send_time(monkeypatch):
     def must_not_send(request, headers):
         raise AssertionError("no debía enviarse")
-    environ = {ORDERS_ENV: "1"}
-    client = DemoClient(credentials, must_not_send, lambda: NOW,
-                        consent=grant_order_consent(True, environ))
-    environ[ORDERS_ENV] = "0"  # se retira el permiso a mitad de proceso
+    client = DemoClient(credentials, must_not_send, lambda: NOW, consent=consent_now())
+    monkeypatch.setenv(ORDERS_ENV, "0")  # se retira el permiso a mitad de proceso
     with pytest.raises(RequestRefused, match="solo lectura"):
         client.new_market_order("BTCUSDT", "BUY", "bt-BTCUSDT-20261012-B", quote_order_qty="10")
 
@@ -413,10 +432,13 @@ def test_only_main_grants_order_consent():
     uses = {}
     for path in src.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        for name in ("grant_order_consent(", "_ISSUED_CONSENTS", "OrderConsent("):
+        for name in ("_grant_order_consent(", "_ISSUED_CONSENTS", "OrderConsent("):
             count = len(re.findall(rf"(?<![\w.])(?<!def )(?<!class ){re.escape(name)}", text))
             if count:
                 uses.setdefault(name, {})[path.name] = count
-    assert uses["grant_order_consent("] == {"demo_client.py": 1}  # solo en main()
-    assert uses["OrderConsent("] == {"demo_client.py": 1}  # solo en grant_order_consent
+    assert uses["_grant_order_consent("] == {"demo_client.py": 1}  # solo en main()
+    assert uses["OrderConsent("] == {"demo_client.py": 1}  # solo en _grant_order_consent
+    assert "grant_order_consent" not in {n for n in dir(__import__("bottrading.demo_client",
+                                                                fromlist=["x"]))
+                                         if not n.startswith("_")}  # ya no es pública
     assert set(uses["_ISSUED_CONSENTS"]) == {"demo_client.py"}
