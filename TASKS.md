@@ -807,3 +807,18 @@ DECISIONS.md (nota en D028), readme.md.
   publication 35 pruebas; el HEAD real es publicable. 614 passed.
 - La tarea de mañana 08:00 ya usa esta versión. Si algo fallara, se detiene
   antes del push (el commit queda local) y queda en el log.
+- Revisión de Codex de 412321f (transmitida por el usuario): requiere
+  cambios. Corregido: (P1) dashboard.html se valida con una LISTA BLANCA de
+  etiquetas y atributos (exactamente los que genera dashboard.py; style solo
+  "background: var(--x)"; meta solo charset y viewport; <style> sin url(),
+  @import ni expresiones); se rechazan onerror/onclick/onload, href, src,
+  javascript:, iframe, object, base, form e instrucciones de procesamiento;
+  report.md no admite ninguna etiqueta HTML ni enlaces. (P2) El validador se
+  ejecuta desde src/bottrading del PROPIO SHA (git archive + python -I -X
+  utf8, comprobando que el módulo cargado es el extraído), no desde la
+  carpeta local. (P2) Se valida cada commit pendiente (Assert-
+  PendingPublishable), no solo el último. Números con patrón decimal cerrado
+  (formato de repr(float)); al probarlo apareció un fallo real: \d aceptaba
+  dígitos no ASCII (p. ej. árabes); corregido a [0-9]. Pruebas: guarda 24/24
+  (+ O commit rechazado debajo de uno válido, P validador local alterado);
+  publication 68; HEAD real publicable con el validador del SHA. 647 passed.

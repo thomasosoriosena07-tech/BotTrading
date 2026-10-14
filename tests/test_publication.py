@@ -115,8 +115,74 @@ def test_equity_schema_is_closed(row):
 def test_scripts_and_external_urls_are_refused(name, content):
     files = good_files()
     files[name] = content
-    with pytest.raises(PublicationError, match="scripts o URLs"):
+    with pytest.raises(PublicationError, match="no permitido|scripts o URLs"):
         validate_files(files)
+
+
+@pytest.mark.parametrize("html", [
+    "<img src=x onerror=alert(1)>",  # revisión de Codex: atributo de evento
+    "<div onclick='x()'>a</div>",
+    "<svg onload=alert(1)></svg>",
+    "<a href='javascript:alert(1)'>a</a>",
+    "<p style='background: url(x)'>a</p>",
+    "<p style='color: red'>a</p>",
+    "<meta http-equiv='refresh' content='0;url=x'>",
+    "<style>@import 'x.css';</style>",
+    "<style>body { background: url(x) }</style>",
+    "<iframe></iframe>",
+    "<object></object>",
+    "<base>",
+    "<form></form>",
+    "<?xml-stylesheet href='x'?>",
+])
+def test_dashboard_only_allows_whitelisted_tags_and_attributes(html):
+    files = good_files()
+    files["paper/dashboard.html"] = f"<!doctype html><html><body>{html}</body></html>".encode()
+    with pytest.raises(PublicationError, match="no permitido"):
+        validate_files(files)
+
+
+def test_dashboard_whitelist_accepts_what_dashboard_py_generates():
+    files = good_files()
+    files["paper/dashboard.html"] = (
+        '<!doctype html><html lang="es"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        "<title>x</title><style>:root { --strategy: #123456 }</style></head><body>"
+        '<span><i style="background: var(--strategy)"></i>a</span>'
+        '<svg viewBox="0 0 10 10" role="img" aria-label="t"><title>t</title>'
+        '<line class="grid" x1="0" x2="1" y1="0" y2="1"></line>'
+        '<polyline points="0,0 1,1"></polyline><text x="1" y="1" text-anchor="end">1</text></svg>'
+        "</body></html>").encode()
+    validate_files(files)
+
+
+@pytest.mark.parametrize("report", [
+    "# Informe\n<b>negrita</b>\n", "# Informe\n<!-- comentario -->\n",
+    "# Informe\n[pulsa](javascript:alert(1))\n", "# Informe\n![img](x.png)\n",
+    "# Informe\njavascript:alert(1)\n",
+])
+def test_report_has_no_html_or_links(report):
+    files = good_files()
+    files["paper/report.md"] = report.encode()
+    with pytest.raises(PublicationError, match="report.md"):
+        validate_files(files)
+
+
+@pytest.mark.parametrize("value", ["1_000", " 1", "+1", "1.", ".5", "0x10", "1e", "١٢"])
+def test_numbers_must_use_the_closed_decimal_format(value):
+    files = good_files()
+    files["paper/equity.csv"] = (b"date,symbol,strategy_equity,buy_and_hold_equity\n"
+                                 + f"2026-10-01,BTCUSDT,{value},1\n".encode())
+    with pytest.raises(PublicationError, match="equity.csv"):
+        validate_files(files)
+
+
+@pytest.mark.parametrize("value", ["0.0", "-3.5", "1e-05", "1.2e+20", "10135.04422688642"])
+def test_repr_float_formats_are_accepted(value):
+    files = good_files()
+    files["paper/equity.csv"] = (b"date,symbol,strategy_equity,buy_and_hold_equity\n"
+                                 + f"2026-10-01,BTCUSDT,{value},1\n".encode())
+    validate_files(files)
 
 
 @pytest.mark.parametrize("leak", [

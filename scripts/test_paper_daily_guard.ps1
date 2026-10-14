@@ -13,6 +13,12 @@ git config user.email "t@t"; git config user.name "t"
 git checkout -q -b main
 New-Item -ItemType Directory paper | Out-Null
 "a" | Out-File paper/ledger.csv; "x" | Out-File other.txt
+# El validador se ejecuta desde el codigo del SHA: el repositorio temporal
+# necesita src/bottrading (copia sin __pycache__).
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+Copy-Item -Recurse (Join-Path $repoRoot "src") "src"
+Get-ChildItem -Recurse -Directory -Filter "__pycache__" src | Remove-Item -Recurse -Force
 git add -A; git commit -q -m "inicial"; git push -q origin main 2>$null
 
 . (Join-Path $PSScriptRoot "paper_daily.ps1")
@@ -89,8 +95,6 @@ git reset -q --hard origin/main
 Remove-Item -Force paper/extra.txt -ErrorAction SilentlyContinue
 
 # M y N (F2b-3): contenido del SHA fijado validado con bottrading.publication.
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 foreach ($f in $PublishablePaths) { Copy-Item (Join-Path $repoRoot $f) $f -Force }
 git add -- @PublishablePaths; git commit -q -m "paper: datos hasta 2026-10-21 (automatico, D028)"
 $threw = $false; try { Assert-PublishableContent (git rev-parse HEAD) $python } catch { $threw = $true }
@@ -100,6 +104,23 @@ $state = Get-Content paper/ledger.state -Raw
 git add -- paper/ledger.state; git commit -q -m "paper: datos hasta 2026-10-22 (automatico, D028)"
 $threw = $false; try { Assert-PublishableContent (git rev-parse HEAD) $python } catch { $threw = $_.ToString() -like "*no publicable*" }
 Check "N ancla incoherente -> lanza antes del push" $threw
+
+# O (revision de Codex): un commit rechazado debajo de uno valido no se publica.
+foreach ($f in $PublishablePaths) { Copy-Item (Join-Path $repoRoot $f) $f -Force }
+git add -- @PublishablePaths; git commit -q -m "paper: datos hasta 2026-10-23 (automatico, D028)"
+$threw = $false; try { Assert-PublishableContent (git rev-parse HEAD) $python } catch { $threw = $true }
+Check "O el ultimo commit por si solo es valido" (-not $threw)
+$threw = $false; try { Assert-PendingPublishable (git rev-parse HEAD) $python } catch { $threw = $_.ToString() -like "*no publicable*" }
+Check "O Assert-PendingPublishable lanza por el commit rechazado debajo" $threw
+
+# P (revision de Codex): se usa el validador del SHA, no la copia local modificada.
+$validator = "src/bottrading/publication.py"
+$original = Get-Content $validator -Raw
+[IO.File]::WriteAllText((Join-Path (Get-Location) $validator),
+    ($original -replace "def main\(argv", "def main(argv=None):`n    return 0`n`ndef _main_original(argv"))
+$threw = $false; try { Assert-PendingPublishable (git rev-parse HEAD) $python } catch { $threw = $_.ToString() -like "*no publicable*" }
+Check "P un validador local alterado no cambia el resultado" $threw
+[IO.File]::WriteAllText((Join-Path (Get-Location) $validator), $original)
 git reset -q --hard origin/main
 
 Check "F nada preparado -> false" (-not (Test-PaperStaged))

@@ -74,20 +74,42 @@ function Get-ValidatedTip {
 }
 
 function Assert-PublishableContent([string]$Sha, [string]$Python) {
-    # Extrae la lista cerrada del SHA fijado (zip: sin conversiones de PowerShell)
-    # y valida su contenido con esquemas cerrados antes de publicar.
-    $zip = Join-Path $env:TEMP ("bottrading_publish_" + [guid]::NewGuid() + ".zip")
+    # Extrae la lista cerrada del SHA (zip: sin conversiones de PowerShell) y la
+    # valida con el validador DEL PROPIO SHA (revision de Codex: no el de la
+    # carpeta local, que podria estar modificado). Como los commits automaticos
+    # solo tocan la lista cerrada, ese codigo es el ya publicado y revisado.
+    $work = Join-Path $env:TEMP ("bottrading_publish_" + [guid]::NewGuid())
+    New-Item -ItemType Directory $work | Out-Null
     try {
+        $zip = Join-Path $work "paper.zip"
+        $srcZip = Join-Path $work "src.zip"
         # Sin conversion de finales de linea: se validan los bytes guardados en el
         # commit, que son los que se publican (no dependen de core.autocrlf).
         git -c core.autocrlf=false -c core.eol=lf archive --format=zip -o $zip $Sha -- @PublishablePaths
         if ($LASTEXITCODE -ne 0) { throw "git archive termino con codigo $LASTEXITCODE" }
-        $result = & $Python -m bottrading.publication $zip 2>&1 | ForEach-Object { "$_" }
+        git -c core.autocrlf=false -c core.eol=lf archive --format=zip -o $srcZip $Sha -- src/bottrading
+        if ($LASTEXITCODE -ne 0) { throw "git archive de src termino con codigo $LASTEXITCODE" }
+        Expand-Archive -Path $srcZip -DestinationPath $work
+        $src = Join-Path $work "src"
+        $code = "import sys; sys.path.insert(0, sys.argv[1]); import bottrading.publication as p; " +
+                "assert p.__file__.startswith(sys.argv[1]), 'validador fuera del SHA'; " +
+                "sys.exit(p.main([sys.argv[2]]))"
+        $result = & $Python -I -X utf8 -c $code $src $zip 2>&1 | ForEach-Object { "$_" }
         if ($LASTEXITCODE -ne 0) { throw "contenido no publicable en ${Sha}: $($result -join ' ')" }
     }
     finally {
-        if (Test-Path $zip) { Remove-Item $zip -Force }
+        if (Test-Path $work) { Remove-Item -Recurse -Force $work }
     }
+}
+
+function Assert-PendingPublishable([string]$Sha, [string]$Python) {
+    # Valida CADA commit pendiente, no solo el ultimo (revision de Codex): un
+    # commit rechazado no puede viajar despues como antecesor de uno valido.
+    # Si uno falla, la tarea se detiene cada dia hasta que se retire a mano
+    # (con aprobacion; nunca reset --hard ni push --force).
+    $commits = @(git rev-list --reverse "origin/main..$Sha")
+    if ($LASTEXITCODE -ne 0) { throw "git rev-list termino con codigo $LASTEXITCODE" }
+    foreach ($commit in $commits) { Assert-PublishableContent $commit $Python }
 }
 
 function Push-Tip([string]$Sha) {
@@ -141,7 +163,7 @@ function Invoke-Daily {
         $sha = Get-ValidatedTip
         $pending = @(git rev-list "origin/main..$sha").Count
         if ($pending -gt 0) {
-            Assert-PublishableContent $sha $python
+            Assert-PendingPublishable $sha $python
             Push-Tip $sha
             Write-Log "publicados $pending commits automaticos hasta $sha"
         }

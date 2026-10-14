@@ -509,6 +509,11 @@ hacer commits automáticos.
   dentro de paper/, hace ajeno el commit); antes del push valida el
   contenido del SHA fijado con bottrading.publication (esquemas cerrados,
   ancla coherente, sin scripts ni URLs externas, sin patrones de claves).
+  Tras la revisión de Codex: el panel se valida con una LISTA BLANCA de
+  etiquetas y atributos; el validador se ejecuta desde el código del propio
+  SHA (no desde la carpeta local); y se valida CADA commit pendiente. Si uno
+  se rechaza, la tarea se detiene cada día hasta retirarlo a mano, con
+  aprobación del usuario (nunca reset --hard ni push --force).
 
 ## D029 — Panel HTML del paper trading
 Estado: Aprobada por el usuario ("sí, prepáralo", 2026-10-13).
