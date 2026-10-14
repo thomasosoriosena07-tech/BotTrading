@@ -243,6 +243,9 @@ def _imports(path: Path) -> list[str]:
         if isinstance(node, ast.Import):
             names += [alias.name for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
+            # Revisión de Codex de I2: la guarda no sigue importaciones relativas, así
+            # que se prohíben en el paquete (todas son absolutas).
+            assert node.level == 0, f"{path.name}: importación relativa"
             names.append(node.module or "")
     return names
 

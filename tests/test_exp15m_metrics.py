@@ -259,3 +259,85 @@ def test_accounting_detects_tampered_fee_equity_and_cash():
                                        *result.trades[1:]])
     assert accounting_problems(bad_cash, history)
     assert accounting_problems(result, history[1:]) == ["las velas no coinciden con las del resultado"]
+
+
+# Revisión de Codex de I2: falsos negativos detectados en memoria y casos sin prueba.
+
+
+def sample():
+    history = regular(6, [100, 101, 102, 103, 104, 105])
+    return history, run_backtest(history, [B, H, S, H, B, H], CONFIG)
+
+
+def test_accounting_detects_corrupted_final_state():
+    history, result = sample()
+    assert result.final_quantity > 0 and accounting_problems(result, history) == []
+    for field, delta in (("final_liquidation_value", 1_000.0), ("final_cash", 1.0),
+                         ("final_quantity", 0.001)):
+        broken = replace(result, **{field: getattr(result, field) + delta})
+        assert any("no coincide con la reconstrucción" in p
+                   for p in accounting_problems(broken, history)), field
+
+
+def test_accounting_detects_selling_more_than_held():
+    history, result = sample()
+    sell = result.trades[1]
+    bigger = sell.quantity * 1.01
+    notional = bigger * sell.price
+    fee = notional * CONFIG.commission_rate
+    cash_before = result.trades[0].cash_after
+    forged = replace(sell, quantity=bigger, fee=fee,
+                     slippage_cost=bigger * (sell.reference_price - sell.price),
+                     cash_after=cash_before + notional - fee)
+    trades = [result.trades[0], forged, *result.trades[2:]]
+    equity = list(result.equity)
+    equity[2] = forged.cash_after  # sin posición tras la venta
+    broken = replace(result, trades=trades, equity=equity)
+    problems = accounting_problems(broken, history)
+    assert any("no es exactamente la cantidad" in p for p in problems)
+
+
+def test_accounting_detects_buy_while_holding_and_non_positive_quantity():
+    history, result = sample()
+    double_buy = replace(result, trades=[result.trades[0],
+                                         replace(result.trades[1], side=Signal.BUY),
+                                         *result.trades[2:]])
+    assert any("compra con una posición abierta" in p
+               for p in accounting_problems(double_buy, history))
+    negative = replace(result, trades=[replace(result.trades[0], quantity=-1.0),
+                                       *result.trades[1:]])
+    problems = accounting_problems(negative, history)
+    assert any("no positiva" in p for p in problems)
+    assert any("negativos" in p for p in problems)
+
+
+def test_accounting_detects_altered_slippage_and_reference_price():
+    history, result = sample()
+    first = result.trades[0]
+    slipped = replace(result, trades=[replace(first, slippage_cost=first.slippage_cost * 1.5),
+                                      *result.trades[1:]])
+    assert any("slippage" in p for p in accounting_problems(slipped, history))
+    moved = replace(result, trades=[replace(first, reference_price=first.reference_price + 1,
+                                            price=(first.reference_price + 1) * 1.0005),
+                                    *result.trades[1:]])
+    assert any("apertura de la vela" in p for p in accounting_problems(moved, history))
+
+
+def test_accounting_rejects_any_negative_cash_and_trades_outside_the_segment():
+    history, result = sample()
+    tiny = replace(result, trades=[replace(result.trades[0], cash_after=-1e-9),
+                                   *result.trades[1:]])
+    assert any("negativos" in p for p in accounting_problems(tiny, history))
+    outside = replace(result, trades=[*result.trades,
+                                      replace(result.trades[-1],
+                                              execution_time=T0 + 100 * STEP)])
+    assert any("fuera de las velas" in p for p in accounting_problems(outside, history))
+
+
+@pytest.mark.parametrize("commission,slippage", [(0.0, 0.0), (0.00075, 0.0002), (0.002, 0.001)])
+def test_accounting_is_clean_in_every_cost_scenario(commission, slippage):
+    config = BacktestConfig(initial_capital=10_000.0, commission_rate=commission,
+                            slippage_rate=slippage)
+    history = regular(10, [100, 103, 99, 105, 103, 108, 107, 110, 111, 109])
+    result = run_backtest(history, [B, H, S, H, B, H, S, B, H, H], config)
+    assert accounting_problems(result, history) == []

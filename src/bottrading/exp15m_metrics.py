@@ -286,6 +286,11 @@ def accounting_problems(result: BacktestResult, candles: Sequence[Candle]) -> li
     """Identidades contables por vela (defecto crítico 3 de A.9); vacía = correctas.
 
     `candles` son las velas del tramo, alineadas con result.timestamps.
+    Comprueba (revisión de Codex de I2) también la conservación de la cantidad
+    (compra solo sin posición, venta exactamente de lo que se tiene), que el
+    precio de referencia sea la apertura de la vela, que toda operación esté en
+    una vela del tramo y el estado final (efectivo, cantidad y liquidación).
+    Cualquier efectivo o cantidad negativos, por pequeños que sean, es defecto.
     """
     if [c.timestamp for c in candles] != list(result.timestamps):
         return ["las velas no coinciden con las del resultado"]
@@ -294,18 +299,44 @@ def accounting_problems(result: BacktestResult, candles: Sequence[Candle]) -> li
     by_time = {trade.execution_time: trade for trade in result.trades}
     if len(by_time) != len(result.trades):
         problems.append("más de una operación en la misma vela")
+    if set(by_time) - set(result.timestamps):
+        problems.append("operaciones fuera de las velas del tramo")
+    if [t.execution_time for t in result.trades] != sorted(by_time):
+        problems.append("operaciones desordenadas")
     cash, quantity = float(config.initial_capital), 0.0
     for i, candle in enumerate(candles):
         trade = by_time.get(candle.timestamp)
+        when = candle.timestamp.isoformat()
         if trade is not None:
             problems += _trade_problems(trade, cash, config.commission_rate, config.slippage_rate)
+            if trade.reference_price != candle.open:
+                problems.append(f"{when}: el precio de referencia no es la apertura de la vela")
+            if trade.side is Signal.BUY and quantity != 0:
+                problems.append(f"{when}: compra con una posición abierta")
+            if trade.side is Signal.SELL and not (quantity > 0 and _close(trade.quantity, quantity)):
+                problems.append(f"{when}: la venta no es exactamente la cantidad que se tiene")
+            if trade.quantity <= 0:
+                problems.append(f"{when}: cantidad de la operación no positiva")
             cash = trade.cash_after
             quantity = trade.quantity if trade.side is Signal.BUY else 0.0
-        if cash < -EQUITY_TOLERANCE or quantity < 0:
-            problems.append(f"{candle.timestamp.isoformat()}: efectivo o cantidad negativos")
+        if cash < 0 or quantity < 0:
+            problems.append(f"{when}: efectivo o cantidad negativos")
         if abs(result.equity[i] - (cash + quantity * candle.close)) > EQUITY_TOLERANCE:
-            problems.append(f"{candle.timestamp.isoformat()}: capital ≠ efectivo + cantidad × cierre")
+            problems.append(f"{when}: capital ≠ efectivo + cantidad × cierre")
+    if candles:
+        problems += _final_problems(result, cash, quantity, candles[-1].close)
     return problems
+
+
+def _final_problems(result: BacktestResult, cash: float, quantity: float,
+                    last_close: float) -> list[str]:
+    config = result.config
+    liquidation = cash + quantity * last_close * (1 - config.slippage_rate) * (1 - config.commission_rate)
+    checks = (("efectivo final", result.final_cash, cash),
+              ("cantidad final", result.final_quantity, quantity),
+              ("valor de liquidación final", result.final_liquidation_value, liquidation))
+    return [f"{name} no coincide con la reconstrucción" for name, actual, expected in checks
+            if not _close(actual, expected)]
 
 
 def _trade_problems(trade: Trade, cash_before: float, commission: float,
@@ -320,16 +351,23 @@ def _trade_problems(trade: Trade, cash_before: float, commission: float,
         expected_price = trade.reference_price * (1 - slippage)
         expected_cash = cash_before + notional - trade.fee
         expected_slippage = trade.quantity * (trade.reference_price - trade.price)
-    checks = (("precio con slippage", trade.price, expected_price),
-              ("comisión", trade.fee, notional * commission),
-              ("coste de slippage", trade.slippage_cost, expected_slippage),
-              ("efectivo tras la operación", trade.cash_after, expected_cash))
-    return [f"{when}: {name} no coincide con la fórmula" for name, actual, expected in checks
-            if not _close(actual, expected)]
+    # El efectivo tras comprar con todo el capital es ~0: su tolerancia se mide
+    # respecto al tamaño de la operación (efectivo previo + nominal), no respecto a 0.
+    checks = (("precio con slippage", trade.price, expected_price, 0.0),
+              ("comisión", trade.fee, notional * commission, 0.0),
+              ("coste de slippage", trade.slippage_cost, expected_slippage, 0.0),
+              ("efectivo tras la operación", trade.cash_after, expected_cash,
+               cash_before + notional))
+    return [f"{when}: {name} no coincide con la fórmula" for name, actual, expected, scale
+            in checks if not _close(actual, expected, scale)]
 
 
-def _close(actual: float, expected: float) -> bool:
-    return abs(actual - expected) <= RELATIVE_TOLERANCE * max(1.0, abs(expected))
+def _close(actual: float, expected: float, scale: float = 0.0) -> bool:
+    """Tolerancia relativa de A.9 (1e-9) sobre max(|esperado|, escala de la operación).
+
+    Sin escala es puramente relativa: con valor esperado 0 exige exactitud.
+    """
+    return abs(actual - expected) <= RELATIVE_TOLERANCE * max(abs(expected), abs(scale))
 
 
 def _exposure(result: BacktestResult) -> float:
