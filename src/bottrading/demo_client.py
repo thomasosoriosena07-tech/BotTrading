@@ -678,6 +678,22 @@ class DemoPaths:
         """Panel HTML privado de la cuenta demo (F5); no se publica."""
         return self.ledger.with_name("dashboard.html")
 
+    def written_files(self) -> list[Path]:
+        """Todo archivo que el bot puede escribir (revisión de Codex: se valida la
+        ruta EFECTIVA de cada uno, enlaces incluidos, no solo la carpeta)."""
+        anchor = self.ledger.with_name("orders.state")
+        return [self.ledger, anchor, self.ledger.with_name("orders.lock"),
+                self.ledger.with_name(self.ledger.name + ".part"),
+                anchor.with_name(anchor.name + ".part"),
+                self.baseline, self.baseline.with_name(self.baseline.name + ".anterior"),
+                self.baseline.with_name(self.baseline.name + ".nuevo"),
+                self.kill_switch, self.runs, self.report, self.dashboard]
+
+
+def _check_private(path: Path) -> None:
+    """Destino efectivo (resolviendo enlaces) fuera del repositorio y de OneDrive."""
+    check_private_location(path, allow_appdata=True)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -718,9 +734,10 @@ def main(argv: Sequence[str] | None = None, *,
     try:
         if paths is None:
             paths = DemoPaths.default()
-        else:  # revisión de Codex: también las rutas explícitas, fuera del repo y OneDrive
-            for private in (paths.ledger, paths.baseline, paths.kill_switch):
-                check_private_location(private, allow_appdata=True)
+        # Revisiones de Codex: rutas explícitas o por defecto, y la ruta efectiva de
+        # cada archivo escrito (un enlace hacia el repo u OneDrive se rechaza).
+        for private in paths.written_files():
+            _check_private(private)
         client = DemoClient(credentials, transport, clock, consent=consent)
         if command not in ("check", "report"):  # diagnóstico y lectura: sin kill switch
             _assert_no_kill_switch(paths)
@@ -765,8 +782,9 @@ def _journal(paths, clock, outcome, orders, detail, out) -> None:
     now = datetime.fromtimestamp(clock(), timezone.utc)
     problem = None
     try:
+        _check_private(paths.runs)  # justo antes de escribir
         append_run(paths.runs, now.date(), now, outcome, orders, detail)
-    except OSError as error:
+    except (OSError, StopTheDay) as error:
         problem = f"{type(error).__name__}"
     if problem:
         out(f"AVISO: no se pudo anotar la ejecución en {paths.runs.name} ({problem})")
@@ -799,12 +817,14 @@ def _write_report(client, paths, records, recon, candles, infos, today, out) -> 
     problem = None
     try:
         runs = read_runs(paths.runs)
+        for target in (paths.report, paths.dashboard):
+            _check_private(target)  # justo antes de escribir (enlaces incluidos)
         paths.report.write_text(render_report(fills, records, runs, today), encoding="utf-8")
         paths.dashboard.write_text(render_demo_dashboard(
             fills, records, runs, recon.holdings, prices, today,
             datetime.fromtimestamp(client.clock(), timezone.utc),
             REPO_ROOT / "paper" / "dashboard.html"), encoding="utf-8")
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, StopTheDay) as error:
         problem = type(error).__name__
     if problem:
         out(f"AVISO: no se pudo actualizar el informe de ejecución ({problem}); "

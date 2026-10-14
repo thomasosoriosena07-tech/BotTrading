@@ -1073,3 +1073,14 @@ informe), tests/test_demo_dashboard.py (nuevo), tests/test_demo_run.py, readme.m
   como LedgerIntegrityError (20 letras); se acepta por coherencia con el filtro
   del log. Pruebas nuevas: redacción, precios inválidos, rutas en repo y
   OneDrive rechazadas sin crear nada. 737 passed. report real: código 0.
+- Revisión de Codex de 4e0ce7b (transmitida por el usuario): se validaban las
+  carpetas, no la ruta efectiva de cada archivo escrito. Corregido:
+  DemoPaths.written_files() enumera todo lo que el bot puede escribir
+  (registro, ancla, bloqueo, temporales .part, línea base y copias de
+  rotación, kill switch, diario, informe, panel); main() valida la ruta
+  efectiva de cada uno (resolviendo enlaces) antes de cualquier petición, y
+  _journal/_write_report la revalidan justo antes de escribir (un enlace que
+  aparezca a mitad solo bloquea esa escritura, con AVISO). Pruebas: archivo
+  redirigido al repositorio -> detenido sin peticiones (6 casos); enlace a
+  mitad -> AVISO, run 0 y panel no escrito; enlace simbólico real (se salta
+  sin modo desarrollador en este Windows). 744 passed, 1 skipped.

@@ -546,3 +546,60 @@ def test_unreadable_ledger_journals_unknown_posts_not_zero(world):
     assert entry.outcome == "detenido" and "envíos: desconocido" in entry.detail
     assert entry.orders is None  # ni 0 ni un número inventado
     assert paths.runs.read_text(encoding="utf-8").splitlines()[1].split(",")[3] == ""
+
+
+# --- revisión de Codex de 4e0ce7b: ruta efectiva de cada archivo escrito ---------------
+
+
+def redirect_into_repo(monkeypatch, name):
+    """Simula que `name` es un enlace cuyo destino efectivo está en el repositorio."""
+    import bottrading.demo_client as client_module
+    from bottrading.demo_ledger import StopTheDay as Stop
+    real = client_module.check_private_location
+
+    def fake(path, *args, **kwargs):
+        if path.name == name:
+            raise Stop(f"ubicación privada no permitida (dentro del repositorio): {name}")
+        return real(path, *args, **kwargs)
+    monkeypatch.setattr(client_module, "check_private_location", fake)
+
+
+@pytest.mark.parametrize("name", ["runs.csv", "execution_report.md", "dashboard.html",
+                                  "orders.state", "orders.csv.part", "baseline.json.anterior"])
+def test_any_written_file_redirected_into_the_repo_stops_before_requests(world, monkeypatch,
+                                                                         name):
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    calls = len(exchange.calls)
+    redirect_into_repo(monkeypatch, name)
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 1 and "ubicación privada no permitida" in text
+    assert len(exchange.calls) == calls and exchange.posts() == []
+
+
+def test_link_appearing_during_the_run_blocks_only_that_write(world, monkeypatch):
+    import bottrading.demo_client as client_module
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    real = client_module._write_report
+
+    def link_then_write(*args, **kwargs):
+        redirect_into_repo(monkeypatch, "dashboard.html")  # aparece a mitad de la ejecución
+        return real(*args, **kwargs)
+    monkeypatch.setattr(client_module, "_write_report", link_then_write)
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0 and "AVISO: no se pudo actualizar el informe" in text
+    assert not paths.dashboard.exists()
+
+
+def test_real_file_symlink_into_the_repo_is_refused(world, tmp_path):
+    from bottrading.demo_ledger import REPO_ROOT
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    target = REPO_ROOT / "no_debe_existir_dashboard.html"
+    try:
+        paths.dashboard.symlink_to(target)
+    except OSError:
+        pytest.skip("crear enlaces simbólicos de archivo requiere modo desarrollador")
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 1 and "ubicación privada no permitida" in text and not target.exists()
