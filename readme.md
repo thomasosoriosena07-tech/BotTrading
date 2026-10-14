@@ -122,6 +122,8 @@ Fase experimental: valida la ejecución, no la rentabilidad. No envía
 8. Informe de ejecución (F5): `python -m bottrading.demo_client report` genera
    `execution_report.md` (privado) con precio real frente al modelo, comisión,
    retraso y la racha de días sin incidencias; `run` con envío lo actualiza.
+9. Panel privado de la cuenta demo: `%USERPROFILE%\.bottrading\demo\dashboard.html`
+   (valor por activo al precio del momento, órdenes, racha). No se publica.
 
 El estado privado vive en `%USERPROFILE%\.bottrading\demo\`, fuera del
 repositorio. Crear el archivo `STOP` en esa carpeta activa el kill switch.
@@ -148,6 +150,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `demo_reconcile.py` | Línea base y reconciliación de la cuenta demo (solo lectura) |
 | `publication.py` | Valida el contenido que la tarea diaria publica (lista cerrada) |
 | `demo_report.py` | Informe privado de ejecución demo frente al modelo (F5) |
+| `demo_dashboard.py` | Panel HTML privado de la cuenta demo (F5) |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |

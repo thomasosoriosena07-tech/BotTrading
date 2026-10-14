@@ -1048,3 +1048,18 @@ DECISIONS.md, readme.md.
 - Revisión de Codex de e3243cc (transmitida por el usuario): "listo". El
   informe de ejecución de F5 queda cerrado (métricas, diario, incidencias y
   conteo de envíos). Sigue F5: acumular 30 días seguidos sin incidencias.
+
+## Registro T021 F5: panel privado de la cuenta demo (Claude Code, 2026-10-14)
+Pedido por el usuario ("si hazlo"). Archivos: src/bottrading/demo_dashboard.py
+(nuevo, sin red), demo_client.py (_prices con bookTicker, panel junto al
+informe), tests/test_demo_dashboard.py (nuevo), tests/test_demo_run.py, readme.md.
+- Panel PRIVADO en %USERPROFILE%/.bottrading/demo/dashboard.html (nunca en
+  paper/, que se publica): valor de la cuenta del bot y resultado frente al
+  presupuesto; por activo, precio del momento (media bid/ask), cantidad,
+  coste, efectivo, valor y resultado frente a 1000 USDT; órdenes frente al
+  modelo; racha; últimas ejecuciones. Mismo estilo que el panel de paper,
+  sin scripts ni recursos externos; texto escapado. Si no hay precio, n/d.
+- Pruebas: valor por activo, autonomía (sin script ni http), total n/d sin
+  precio, escape; integración con run. 734 passed.
+- Real (2026-10-14): cuenta del bot 2973.85 USDT (-0.87 %); BTC dentro a
+  81690 (posición 973.85, -2.61 %); ETH y SOL fuera (1000 cada uno).

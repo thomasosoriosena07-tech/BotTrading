@@ -94,6 +94,8 @@ class Exchange:
         if path == "/api/v3/account":
             return 200, {"canTrade": True, "balances": [
                 {"asset": a, "free": str(v), "locked": "0"} for a, v in self.balances.items() if v]}
+        if path == "/api/v3/ticker/bookTicker":
+            return 200, {"bidPrice": str(self.price - 1), "askPrice": str(self.price + 1)}
         if path == "/api/v3/openOrders":
             return 200, []
         if path == "/api/v3/allOrders":
@@ -464,6 +466,9 @@ def test_send_run_journals_ok_and_writes_the_private_report(world):
         assert intent.client_order_id in report
     assert "Días seguidos sin incidencias: 1 de 30" in report
     assert paths.report.parent == paths.ledger.parent  # privado, junto al registro
+    panel = paths.dashboard.read_text(encoding="utf-8")  # panel privado, junto al registro
+    assert paths.dashboard.parent == paths.ledger.parent
+    assert "BTCUSDT" in panel and "1 de 30" in panel and "<script" not in panel
 
 
 def test_stopped_send_run_is_journaled_and_simulation_is_not(world):

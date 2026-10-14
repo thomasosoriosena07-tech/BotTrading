@@ -56,6 +56,7 @@ from bottrading.demo_ledger import (
     default_ledger_path,
     execute_intent,
 )
+from bottrading.demo_dashboard import render_demo_dashboard
 from bottrading.demo_report import append_run, collect_fills, read_runs, render_report
 from bottrading.demo_reconcile import (
     load_baseline,
@@ -453,6 +454,10 @@ class DemoClient:
         self._credentials, self._transport, self._clock = credentials, transport, clock
         self._consent = consent  # solo grant_order_consent lo emite (D030)
 
+    def clock(self) -> float:
+        """Hora (corregida con la del servidor si así se creó el cliente)."""
+        return self._clock()
+
     def new_market_order(self, symbol: str, side: str, client_order_id: str, *,
                          quantity: str | None = None, quote_order_qty: str | None = None) -> dict:
         params = {"symbol": symbol, "side": side, "type": "MARKET",
@@ -667,6 +672,11 @@ class DemoPaths:
         """Informe privado de ejecución (F5); no se publica."""
         return self.ledger.with_name("execution_report.md")
 
+    @property
+    def dashboard(self) -> Path:
+        """Panel HTML privado de la cuenta demo (F5); no se publica."""
+        return self.ledger.with_name("dashboard.html")
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -757,15 +767,35 @@ def _journal(paths, clock, outcome, orders, detail, out) -> None:
         out(f"AVISO: no se pudo anotar la ejecución en {paths.runs.name} ({problem})")
 
 
-def _write_report(paths, records, recon, candles, infos, today, out) -> bool:
-    """Escribe el informe privado. Un fallo del diario o del informe se avisa
-    pero no cambia el resultado de run (revisión de Codex); devuelve si se escribió."""
+def _prices(client) -> dict:
+    """Precio medio (bid+ask)/2 del momento; None si no se puede leer (no bloquea)."""
+    prices = {}
+    for symbol in DEMO_SYMBOLS:
+        price = None
+        try:
+            ticker = client.book_ticker(symbol)
+            price = (Decimal(ticker["bidPrice"]) + Decimal(ticker["askPrice"])) / 2
+        except (DemoClientError, KeyError, TypeError, ArithmeticError):
+            price = None
+        prices[symbol] = price
+    return prices
+
+
+def _write_report(client, paths, records, recon, candles, infos, today, out) -> bool:
+    """Escribe el informe y el panel privados. Un fallo del diario o del informe
+    se avisa pero no cambia el resultado de run (revisión de Codex); devuelve
+    si se escribieron."""
     fills = collect_fills(records, recon.orders, recon.trades, candles,
                           {s: info.base_asset for s, info in infos.items()})
+    prices = _prices(client)
     problem = None
     try:
         runs = read_runs(paths.runs)
         paths.report.write_text(render_report(fills, records, runs, today), encoding="utf-8")
+        paths.dashboard.write_text(render_demo_dashboard(
+            fills, records, runs, recon.holdings, prices, today,
+            datetime.fromtimestamp(client.clock(), timezone.utc),
+            REPO_ROOT / "paper" / "dashboard.html"), encoding="utf-8")
     except (OSError, ValueError) as error:
         problem = type(error).__name__
     if problem:
@@ -775,6 +805,7 @@ def _write_report(paths, records, recon, candles, infos, today, out) -> bool:
     pending = sum(1 for f in fills if f.open_price is None)
     out(f"Informe de ejecución: {len(fills)} órdenes ejecutadas ({pending} con la vela del día "
         f"pendiente); guardado en {paths.report}")
+    out(f"Panel privado de la cuenta demo: {paths.dashboard}")
     return True
 
 
@@ -792,7 +823,8 @@ def _report(client, credentials, clock, paths, out, data_dir) -> int:
     with OrderLedger(paths.ledger) as ledger:
         records = ledger.records()
         recon = reconcile(client, ledger, baseline)
-    if not _write_report(paths, records, recon, _load_candles(data_dir), infos, today, out):
+    if not _write_report(client, paths, records, recon, _load_candles(data_dir), infos, today,
+                         out):
         return 1
     summary = [line for line in paths.report.read_text(encoding="utf-8").splitlines()
                if line.startswith("- ")][:3]
@@ -976,7 +1008,7 @@ def _run(client, credentials, clock, paths, out, send, data_dir, sleep) -> int:
              "; ".join(incidents) if incidents else "sin incidencias", out)
     if incidents:
         out(f"INCIDENCIA: {'; '.join(incidents)} (la cuenta no quedó alineada)")
-    _write_report(paths, records, after, candles, infos, today, out)
+    _write_report(client, paths, records, after, candles, infos, today, out)
     return 0
 
 
