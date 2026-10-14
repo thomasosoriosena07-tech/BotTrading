@@ -891,3 +891,15 @@ readme.md.
   vuelve a firmar con la nueva (mismo contenido). Pruebas: rotación correcta,
   sin confirmación, clave igual, clave nueva que no funciona y línea base que
   no verifica con la clave actual: en todos los casos no cambia nada. 712 passed.
+- Revisión de Codex de bd15550 (transmitida por el usuario): se puede enviar
+  la primera orden demo una vez completada la rotación y sustituida la
+  credencial activa. Acepta el límite del permiso. Riesgo anotado: rekey
+  interrumpido deja artefactos (.anterior/.nuevo) que exigen intervención
+  manual; procedimiento escrito en D030.
+- Intento de rotación del usuario: "credencial demo con formato inesperado".
+  Diagnóstico sin mostrar valores (script de un solo uso que solo imprime
+  longitudes y clases de caracteres): API key de 64 alfanuméricos correcta;
+  el secret guardado eran 32 caracteres U+2022 (viñetas): se copió el secret
+  ENMASCARADO de la web. Binance solo muestra el secret al crear la clave:
+  hay que crear otra y copiarlo en ese momento. Aún no se ha enviado ninguna
+  orden.

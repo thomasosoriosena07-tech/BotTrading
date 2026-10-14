@@ -838,6 +838,12 @@ F4 (aprobación (b), 2026-10-13):
   base se verifica con la clave actual y se vuelve a firmar con la nueva,
   con confirmación REFIRMAR y copia baseline.json.anterior); después el
   usuario sustituye BotTrading-Demo por la clave nueva.
+  Recuperación manual si rekey se interrumpe (revisión de Codex): si queda
+  baseline.json.anterior o baseline.json.nuevo, comprobar con check con qué
+  clave verifica baseline.json; si verifica con la NUEVA, la rotación se
+  completó (borrar .nuevo y conservar .anterior como histórico); si verifica
+  con la ACTUAL, borrar .nuevo y .anterior (son copias) y repetir rekey.
+  Nunca se edita la línea base a mano.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
   evento): el comando se detiene con DETENIDO y no envía nada ese día.
 
