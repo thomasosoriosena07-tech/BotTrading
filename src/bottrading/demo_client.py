@@ -53,6 +53,7 @@ from bottrading.demo_ledger import (
     OrderLedger,
     OrderStatus,
     StopTheDay,
+    check_private_location,
     default_ledger_path,
     execute_intent,
 )
@@ -715,7 +716,11 @@ def main(argv: Sequence[str] | None = None, *,
     send = consent is not None
     failure = None
     try:
-        paths = paths or DemoPaths.default()
+        if paths is None:
+            paths = DemoPaths.default()
+        else:  # revisión de Codex: también las rutas explícitas, fuera del repo y OneDrive
+            for private in (paths.ledger, paths.baseline, paths.kill_switch):
+                check_private_location(private, allow_appdata=True)
         client = DemoClient(credentials, transport, clock, consent=consent)
         if command not in ("check", "report"):  # diagnóstico y lectura: sin kill switch
             _assert_no_kill_switch(paths)
@@ -771,13 +776,16 @@ def _prices(client) -> dict:
     """Precio medio (bid+ask)/2 del momento; None si no se puede leer (no bloquea)."""
     prices = {}
     for symbol in DEMO_SYMBOLS:
-        price = None
+        bid = ask = None
         try:
             ticker = client.book_ticker(symbol)
-            price = (Decimal(ticker["bidPrice"]) + Decimal(ticker["askPrice"])) / 2
+            bid, ask = Decimal(ticker["bidPrice"]), Decimal(ticker["askPrice"])
         except (DemoClientError, KeyError, TypeError, ArithmeticError):
-            price = None
-        prices[symbol] = price
+            bid = ask = None
+        # Revisión de Codex: solo precios finitos, positivos y coherentes (ask >= bid).
+        valid = (bid is not None and ask is not None and bid.is_finite() and ask.is_finite()
+                 and 0 < bid <= ask)
+        prices[symbol] = (bid + ask) / 2 if valid else None
     return prices
 
 

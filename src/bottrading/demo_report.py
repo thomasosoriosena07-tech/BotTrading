@@ -18,6 +18,7 @@ Valida la ejecución, no la rentabilidad de la estrategia.
 import csv
 import io
 import os
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -29,6 +30,15 @@ from bottrading.data import Candle
 from bottrading.demo_ledger import OrderRecord
 
 QUOTE_ASSET = "USDT"
+# Mismo criterio que Hide-Secrets (scripts/demo_daily.ps1): toda secuencia
+# alfanumérica de 16 o más caracteres se tapa al mostrar texto libre.
+SECRET_LIKE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9]{16,}(?![A-Za-z0-9])")
+
+
+def redact(text: str) -> str:
+    """Tapa lo que podría ser una credencial en texto libre (revisión de Codex)."""
+    text = re.sub(r"(?i)signature=[^&\s]*", "signature=[oculto]", text)
+    return SECRET_LIKE.sub("[oculto]", text)
 RUN_COLUMNS = ["date", "at", "outcome", "orders", "detail"]
 
 
@@ -223,5 +233,5 @@ def render_report(fills: Sequence[FillMetrics], records: Mapping[str, OrderRecor
     lines += ["", f"Comisión del modelo: {model_fee:.3f} %. Positivo en pb = peor que la "
               "referencia; la apertura se completa al descargar la vela del día.", "",
               "## Incidencias (ejecuciones detenidas)", ""]
-    lines += [f"- {r.at}: {r.detail}" for r in stops[-20:]] or ["- (ninguna)"]
+    lines += [f"- {r.at}: {redact(r.detail)}" for r in stops[-20:]] or ["- (ninguna)"]
     return "\n".join(lines) + "\n"

@@ -1063,3 +1063,13 @@ informe), tests/test_demo_dashboard.py (nuevo), tests/test_demo_run.py, readme.m
   precio, escape; integración con run. 734 passed.
 - Real (2026-10-14): cuenta del bot 2973.85 USDT (-0.87 %); BTC dentro a
   81690 (posición 973.85, -2.61 %); ETH y SOL fuera (1000 cada uno).
+- Revisión de Codex de e945563 (transmitida por el usuario): requiere
+  cambios. Corregido: (1) main() valida también las rutas EXPLÍCITAS: fuera
+  del repositorio y de OneDrive siempre (AppData solo se exige en la ruta por
+  defecto, por la virtualización de la Store, no por privacidad); (2) precios
+  solo finitos, positivos y coherentes (0 < bid <= ask); si no, n/d; (3) el
+  detalle de las ejecuciones se redacta (alfanuméricos de 16+ y signature=)
+  en el panel y en el informe. Nota: la redacción también tapa nombres largos
+  como LedgerIntegrityError (20 letras); se acepta por coherencia con el filtro
+  del log. Pruebas nuevas: redacción, precios inválidos, rutas en repo y
+  OneDrive rechazadas sin crear nada. 737 passed. report real: código 0.

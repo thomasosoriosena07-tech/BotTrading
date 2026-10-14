@@ -19,7 +19,7 @@ from pathlib import Path
 
 from bottrading.dashboard import STYLE
 from bottrading.demo_ledger import OrderRecord
-from bottrading.demo_report import FillMetrics, RunEntry, clean_streak
+from bottrading.demo_report import FillMetrics, RunEntry, clean_streak, redact
 from bottrading.execution import BUDGET_PER_ASSET, Holding
 
 BUDGET = Decimal(repr(BUDGET_PER_ASSET))
@@ -135,7 +135,7 @@ def _runs_table(runs: Sequence[RunEntry]) -> str:
     rows = []
     for run in list(reversed(runs))[:15]:
         cells = [run.at[:16].replace("T", " "), run.outcome,
-                 "desconocido" if run.orders is None else str(run.orders), run.detail]
+                 "desconocido" if run.orders is None else str(run.orders), redact(run.detail)]
         rows.append("<tr>" + "".join(f"<td>{html.escape(c)}</td>" for c in cells) + "</tr>")
     if not rows:
         rows.append('<tr><td colspan="4">Todavía no hay ejecuciones registradas</td></tr>')

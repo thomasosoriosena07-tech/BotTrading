@@ -120,17 +120,22 @@ def onedrive_registry_roots(registry=None) -> list[Path]:
 
 
 def check_private_location(path: Path,
-                           registry_roots: Callable[[], list[Path]] = onedrive_registry_roots
-                           ) -> None:
+                           registry_roots: Callable[[], list[Path]] = onedrive_registry_roots,
+                           *, allow_appdata: bool = False) -> None:
     """Se niega a usar una carpeta privada dentro del repositorio, OneDrive o AppData.
 
     OneDrive se detecta por tres vías (revisión de Codex): variables de
     entorno, carpetas sincronizadas declaradas en el registro y, como
     respaldo, cualquier carpeta de la ruta cuyo nombre empiece por
     "OneDrive". La ruta se resuelve antes (enlaces, relativas, mayúsculas).
+
+    `allow_appdata` solo relaja AppData (un problema del Python de la Store, no
+    de privacidad); el repositorio y OneDrive se rechazan siempre.
     """
     resolved = path.resolve()
-    roots = [REPO_ROOT] + [Path(os.environ[name]) for name in FORBIDDEN_ROOT_VARIABLES
+    names = [n for n in FORBIDDEN_ROOT_VARIABLES
+             if not (allow_appdata and n in ("LOCALAPPDATA", "APPDATA"))]
+    roots = [REPO_ROOT] + [Path(os.environ[name]) for name in names
                            if os.environ.get(name)] + list(registry_roots())
     for root in roots:
         if resolved.is_relative_to(root.resolve()):
