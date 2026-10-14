@@ -263,7 +263,7 @@ def render_report(evaluations: Sequence[Evaluation], selection: Selection,
         "",
         f"- Protocolo EXPERIMENT_15M.md, SHA-256 {protocol_sha}",
         f"- Manifiesto 15m {manifest_sha}; manifiesto diario {daily_manifest_sha}",
-        f"- Capital {CAPITAL:,.0f} USDT; escenario principal: base (comisión 0,1 %, "
+        f"- Capital {_money(CAPITAL)} USDT; escenario principal: base (comisión 0,1 %, "
         "slippage 0,05 % por lado); 4 configuraciones × 11 trimestres × 4 escenarios = "
         f"{len(CONFIGS) * len(QUARTERS) * len(SCENARIOS)} evaluaciones de validación.",
         "",
@@ -275,7 +275,7 @@ def render_report(evaluations: Sequence[Evaluation], selection: Selection,
     for config in CONFIGS:
         sharpe, drawdown = selection.medians[config]
         mark = " **(elegida)**" if config == selection.config else ""
-        lines.append(f"| {label(config)}{mark} | {sharpe:.2f} | {_pct(drawdown)} |")
+        lines.append(f"| {label(config)}{mark} | {sharpe:.2f} | {_share(drawdown)} |")
     lines += [
         "",
         f"- Elegida: **{label(selection.config)}**. Es la única que se evaluará en el holdout.",
@@ -319,8 +319,8 @@ def render_report(evaluations: Sequence[Evaluation], selection: Selection,
         lines.append(
             f"| {label(config)} | {sum(s.trades for s in rows)} | "
             f"{sum(s.round_trips for s in rows)} | "
-            f"{_pct(statistics.fmean(s.exposure for s in rows))} | "
-            f"{sum(s.total_fees for s in rows):,.0f} | {sum(s.total_slippage for s in rows):,.0f} | "
+            f"{_share(statistics.fmean(s.exposure for s in rows))} | "
+            f"{_money(sum(s.total_fees for s in rows))} | {_money(sum(s.total_slippage for s in rows))} | "
             + " | ".join(str(sum(s.flag_counts[k] for s in rows))
                          for k in rows[0].flag_counts) + " |")
     lines += ["", "## Desarrollo 2020-2023 (información; no entra en la selección)", "",
@@ -329,7 +329,7 @@ def render_report(evaluations: Sequence[Evaluation], selection: Selection,
     for name in [label(c) for c in CONFIGS] + ["buy-and-hold", "baseline T019"]:
         cells = [_pct(row(name, "desarrollo", s.name).net_return) for s in SCENARIOS]
         lines.append(f"| {name} | " + " | ".join(cells)
-                     + f" | {_pct(row(name, 'desarrollo').max_drawdown)} |")
+                     + f" | {_share(row(name, 'desarrollo').max_drawdown)} |")
     lines += ["", "## Tramos", "", "| Tramo | Primera vela | Última vela | Velas |", "|---|---|---|---:|"]
     for name, (first, last, count) in references.items():
         lines.append(f"| {name} | {first:%Y-%m-%d %H:%M} | {last:%Y-%m-%d %H:%M} | {count} |")
@@ -340,6 +340,15 @@ def render_report(evaluations: Sequence[Evaluation], selection: Selection,
 
 def _pct(value: float | None) -> str:
     return "n/d" if value is None else f"{value * 100:+.2f} %".replace(".", ",")
+
+
+def _share(value: float) -> str:
+    """Porcentaje sin signo (drawdown, exposición)."""
+    return f"{value * 100:.2f} %".replace(".", ",")
+
+
+def _money(value: float) -> str:
+    return f"{value:,.0f}".replace(",", " ")
 
 
 def _num(value: float | None) -> str:
