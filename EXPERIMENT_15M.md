@@ -708,6 +708,12 @@ Se miden en el holdout C, escenario base, salvo que se indique otra cosa. "Retor
    - el efectivo o la cantidad son negativos; o
    - el capital no es igual a efectivo + cantidad × cierre (tolerancia 1e-6 USDT); o
    - alguna comisión o slippage no coincide con la fórmula de su escenario (tolerancia 1e-9 relativa).
+   - *Aclaración 1 (2026-10-14, I2; no cambia ningún criterio):* la comprobación también cubre:
+     - el precio con slippage y el efectivo tras cada operación, con tolerancia relativa 1e-9. Para el efectivo, la base es max(|esperado|, efectivo previo + nominal): al invertir todo el capital el esperado es ~0, y una tolerancia relativa a 0 confundiría el redondeo de coma flotante con un defecto;
+     - la conservación de la cantidad: solo se compra sin posición y se vende exactamente lo que se tiene;
+     - que el lado de cada operación sea BUY o SELL, y que su precio de referencia sea la apertura de su vela;
+     - que la señal sea la de la vela anterior;
+     - el estado final: efectivo, cantidad y liquidación.
 4. Hay evidencia de lookahead: alguna prueba de prefijos falla con los datos reales del holdout.
 5. Se viola el protocolo de apertura: el holdout se abre más de una vez, o se ejecuta con un commit o protocolo distinto del registrado, o los datos se descargaron antes de publicar el código.
 6. Se viola el aislamiento: `bottrading.__file__` está fuera del worktree, hay escritura fuera de las rutas de A.3, o se usa un módulo de la demo.
@@ -768,3 +774,4 @@ Un resultado RECHAZADO o INCONCLUSO es válido y se publica tal cual.
 | 2026-10-14 | v4: el usuario aprueba las decisiones de A.12. Revisión T022-R3 de Codex: algoritmo exacto de C9, prueba de exclusión para operaciones "tras hueco" y "liquidez dudosa", lista cerrada de defectos críticos, días naturales sin velas ("día arrastrado") y C4 con retorno > 0 en alto | Claude Code |
 | 2026-10-14 | v4.1: revisión T022-R4 de Codex: fórmula exacta del volumen para "liquidez dudosa" (A.5) | Claude Code |
 | 2026-10-14 | Enmienda 1 (A.4): velas sin negociación como hueco y velas truncadas marcadas. Motivo: paradas del exchange halladas al validar los datos reales de 2020-2023, antes de ver el holdout. Registrada en D031 | Claude Code |
+| 2026-10-14 | Aclaración 1 (A.9, defecto crítico 3): alcance de las identidades contables y tolerancia del efectivo tras cada operación. Revisión de Codex de I2; no cambia ningún criterio | Claude Code |
