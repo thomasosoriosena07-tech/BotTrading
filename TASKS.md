@@ -1143,3 +1143,25 @@ Claude Code), DECISIONS.md (D031), TASKS.md. readme.md:148 corregido aparte
   a "mayor rentabilidad neta fuera de muestra"; C4 exige además retorno > 0
   con costes altos.
 - Siguiente: aprobación explícita para implementar en el worktree.
+
+## Registro T022 I1-I2: datos y métricas del experimento (Claude Code, 2026-10-14)
+Rama experiment/15m en el worktree C:/Users/thoma/bottrading-exp15m (.venv
+propio; bottrading se importa desde el worktree). main y la tarea de las 08:00
+no se tocan.
+- I1 (550980a, f9768ac): exp15m_data.py, que valida rejilla, close_time, meses
+  cerrados, checksum y orden, lista los huecos y crea el manifiesto SHA-256 de
+  81 ZIP (2020-01 a 2026-09). Datos reales: 236 475 velas, 15 huecos (165
+  velas), 13 sin negociación y 5 truncadas, todas de 2020-2023, lo que motivó
+  la Enmienda 1 (D031). Revisión de Codex: sin bloqueos; manifiesto con
+  repetidos y guarda transitiva corregidos.
+- I2 (bc85b0f, 0ed2e7c y la corrección siguiente): exp15m_metrics.py, con
+  muestreo diario, drawdown intradía y diario, marcas, C8, C9 (bootstrap de A.9
+  más una implementación independiente en la prueba), exclusión, cota de
+  redondeo e identidades contables. Codex encontró 2 falsos negativos (P1:
+  liquidación final y venta mayor que la posición), un lado HOLD aceptado y
+  signal_time sin comprobar: todo corregido y probado. Aclaración 1 en A.9.
+  Contabilidad con datos reales de 2024: 0 falsos positivos en 8 backtests.
+- Pruebas en el worktree: 812 passed, 4 skipped (3 de enlaces simbólicos y 1
+  que necesita datos diarios).
+- Pendiente: I3 (walk-forward, selección e informe de validación) e I4 (guarda
+  de apertura única del holdout).

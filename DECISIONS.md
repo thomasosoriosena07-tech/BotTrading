@@ -918,7 +918,9 @@ pendiente sobre la fórmula de "liquidez dudosa", que quedó resuelto en A.5).
 - **Enmienda 1 (2026-10-14, I1, antes de ver el holdout):** se añade a A.4 el tratamiento de las velas sin negociación (como hueco) y de las velas truncadas (marcadas y en la prueba de exclusión).
   - Motivo: al validar los datos reales aparecieron 13 y 5 velas así, todas de paradas de 2020-2023 y ninguna en la validación. Con la regla anterior, toda la serie sería un defecto crítico.
   - SHA-256 del protocolo enmendado (blob LF): 5230b0417e52ebfcb08198fb9ebca4e3a9115537f084343ee510d4bda6e3cdcf.
-  - Pendiente de revisión de Codex.
+  - Codex, en su revisión de I1: "enmienda causal y acotada". INFERIDO: que se deba a paradas del exchange.
+- **Aclaración 1 (2026-10-14, I2, no cambia ningún criterio):** detalla en A.9 (defecto crítico 3) qué identidades contables se comprueban y la tolerancia del efectivo tras cada operación (revisión de Codex de I2).
+  - SHA-256 del protocolo (blob LF): 5618253be395b3e719a04aba023d5684654e9417cf900a931bdd32ce45d5f0a6.
 
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.
