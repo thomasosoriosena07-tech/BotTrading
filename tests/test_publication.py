@@ -217,3 +217,76 @@ def test_missing_or_corrupt_archive_is_rejected_without_traceback(tmp_path, caps
     (tmp_path / "roto.zip").write_bytes(b"no es un zip")
     assert main([str(tmp_path / "roto.zip")]) == 1
     assert capsys.readouterr().out.count("PUBLICACION RECHAZADA") == 2
+
+
+# --- revisión de Codex de 1910866 -----------------------------------------------------
+
+
+def dashboard_with(fragment, head=""):
+    files = good_files()
+    files["paper/dashboard.html"] = (
+        f"<!doctype html><html><head>{head}</head><body>{fragment}</body></html>").encode()
+    return files
+
+
+@pytest.mark.parametrize("fragment", [
+    "<!--[if IE]><script>alert(1)</script><![endif]-->",  # evasión de Codex
+    "<!-- comentario cualquiera -->",
+    "<![CDATA[x]]>",
+])
+def test_html_comments_and_cdata_are_refused(fragment):
+    with pytest.raises(PublicationError, match="comentario HTML|declaración"):
+        validate_files(dashboard_with(fragment))
+
+
+def test_only_the_html5_doctype_is_allowed():
+    files = good_files()
+    files["paper/dashboard.html"] = b'<!DOCTYPE html SYSTEM "x"><html></html>'
+    with pytest.raises(PublicationError, match="declaración"):
+        validate_files(files)
+
+
+@pytest.mark.parametrize("css", [
+    r"a{background:u\72l(\2f\2fevil.example/x)}",  # evasión de Codex: url() con escapes
+    "a{background:url(x.png)}",
+    "a{background:image-set(\"x.png\" 1x)}",
+    "a{width:expression(alert(1))}",
+    "@import \"x.css\";",
+    "@font-face{font-family:x;src:local(x)}",
+    "a{background:u/**/rl(x)}",
+    "a{content:'x'}",
+    "a{background:-webkit-image-set(\"x\" 1x)}",
+    "a{background:URL(x)}",
+])
+def test_css_is_allowlisted(css):
+    with pytest.raises(PublicationError, match="CSS"):
+        validate_files(dashboard_with("", f"<style>{css}</style>"))
+
+
+def test_css_generated_by_dashboard_py_is_accepted():
+    css = (':root{--strategy:#123}[data-theme="dark"]{--strategy:#456}'
+           "@media (prefers-color-scheme: dark){:root{--strategy:#789}}"
+           ".grid{grid-template-columns:repeat(auto-fit, minmax(16rem, 1fr));"
+           "color:var(--strategy)}")
+    validate_files(dashboard_with("", f"<style>{css}</style>"))
+
+
+@pytest.mark.parametrize("text", [
+    "www.example.com",  # revisión de Codex: autoenlace sin //
+    "WWW.Example.org/x", "contacto: alguien@example.com", "mailto:alguien",
+    "data:text/html;base64,PHNjcmlwdD4=", "vbscript:x", "ftp://example.com",
+])
+def test_linkable_text_is_refused_in_report_and_dashboard(text):
+    files = good_files()
+    files["paper/report.md"] = f"# Informe\n{text}\n".encode()
+    with pytest.raises(PublicationError, match="report.md"):
+        validate_files(files)
+    with pytest.raises(PublicationError, match="dashboard.html"):
+        validate_files(dashboard_with(f"<p>{text}</p>"))
+
+
+def test_ordinary_report_text_with_file_names_is_accepted():
+    files = good_files()
+    files["paper/report.md"] = ("# Informe\nProtocolo en DECISIONS.md D027; datos en "
+                                "paper/ledger.csv. Retorno: -0.84 %.\n").encode()
+    validate_files(files)

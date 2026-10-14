@@ -822,3 +822,15 @@ DECISIONS.md (nota en D028), readme.md.
   dígitos no ASCII (p. ej. árabes); corregido a [0-9]. Pruebas: guarda 24/24
   (+ O commit rechazado debajo de uno válido, P validador local alterado);
   publication 68; HEAD real publicable con el validador del SHA. 647 passed.
+- Revisión de Codex de 1910866 (transmitida por el usuario): resueltos SHA,
+  commits pendientes y decimales; requiere cambios en el filtro HTML.
+  Corregido: (P1) se rechaza cualquier comentario HTML (incluidos los
+  condicionales <!--[if IE]>) y toda declaración salvo <!doctype html>;
+  (P1) el CSS pasa a lista blanca: sin barras invertidas (sin escapes como
+  u\72l(), sin comentarios ni comillas simples, solo @media y solo las
+  funciones var, repeat y minmax (url, image-set, expression... fuera por
+  construcción); (P2) report.md y dashboard.html rechazan www., ://,
+  correos, mailto:, data:, javascript: y vbscript:. Al probarlo, la primera
+  versión tomaba "@media (" por una función; corregido. Pruebas: 91 del
+  validador (+ las evasiones de Codex y variantes); guarda 24/24; archivos
+  reales válidos. 670 passed.

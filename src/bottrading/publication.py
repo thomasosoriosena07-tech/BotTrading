@@ -11,8 +11,10 @@ contenido con esquemas cerrados:
 - equity.csv: columnas fijas; fecha, símbolo y números finitos.
 - dashboard.html: LISTA BLANCA de etiquetas y atributos (exactamente los que
   genera dashboard.py), style solo "background: var(--x)", meta solo charset
-  y viewport, <style> sin url()/@import/expression; sin URLs externas.
-- report.md: Markdown sin ninguna etiqueta HTML ni enlaces, sin URLs.
+  y viewport, CSS en lista blanca (solo @media y var/repeat/minmax, sin
+  escapes ni comentarios), sin comentarios HTML y solo <!doctype html>.
+- report.md: Markdown sin etiquetas HTML ni enlaces; ninguno de los dos admite
+  URLs, www., correos ni esquemas (mailto:, data:, javascript:).
 - Todos: tamaño acotado y sin patrones de credenciales (defensa adicional,
   no criterio principal).
 
@@ -62,7 +64,15 @@ HTML_ATTRIBUTES = frozenset({
 STYLE_ATTRIBUTE = re.compile(r"background: var\(--[a-z-]+\)")
 META_ALLOWED = ({("charset", "utf-8")},
                 {("name", "viewport"), ("content", "width=device-width, initial-scale=1")})
-STYLE_FORBIDDEN = re.compile(r"url\s*\(|@import|expression\s*\(|javascript:|behavior\s*:", re.I)
+# CSS en lista blanca (revisión de Codex: escapes como u\72l( evitaban una
+# lista negra): sin barras invertidas (no hay escapes posibles), sin
+# comentarios ni comillas simples, solo la regla @media y solo las funciones
+# que usa dashboard.py. url(, image-set(, expression(... quedan fuera.
+CSS_FUNCTIONS = frozenset({"var", "repeat", "minmax"})
+CSS_AT_RULES = frozenset({"@media"})
+# Lo que un visor puede convertir en enlace o recurso: esquemas, www., correos.
+LINKABLE = re.compile(r"://|\bwww\.|mailto:|javascript:|data:|vbscript:|"
+                      r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]", re.I)
 
 
 class PublicationError(ValueError):
@@ -102,8 +112,23 @@ def validate_files(files: dict[str, bytes]) -> None:
 def _validate_report(text: str) -> None:
     name = "paper/report.md"
     if re.search(r"<\s*[A-Za-z!/?]", text) or "](" in text or EXTERNAL_URL.search(text) \
-            or re.search(r"javascript:", text, re.I):
+            or LINKABLE.search(text):
         raise PublicationError(f"{name}: contiene HTML, enlaces, scripts o URLs externas")
+
+
+def _css_problems(css: str) -> list[str]:
+    problems = []
+    if "\\" in css or "/*" in css or "'" in css or "<" in css:
+        problems.append("CSS con escapes, comentarios, comillas simples o '<'")
+    rules = set(re.findall(r"@[A-Za-z-]+", css))
+    if not rules <= CSS_AT_RULES:
+        problems.append(f"regla CSS no permitida {sorted(rules - CSS_AT_RULES)}")
+    # Nombre seguido de "(" que no sea una regla @ (en "@media (" no hay función).
+    functions = {f.lower() for f in
+                 re.findall(r"(?<![@A-Za-z0-9_-])([A-Za-z_-][A-Za-z0-9_-]*)\s*\(", css)}
+    if not functions <= CSS_FUNCTIONS:
+        problems.append(f"función CSS no permitida {sorted(functions - CSS_FUNCTIONS)}")
+    return problems
 
 
 class _DashboardChecker(HTMLParser):
@@ -130,8 +155,17 @@ class _DashboardChecker(HTMLParser):
         self._in_style = False
 
     def handle_data(self, data):
-        if self._in_style and STYLE_FORBIDDEN.search(data):
-            self.problems.append("CSS con url(), @import o expresiones")
+        if self._in_style:
+            self.problems += _css_problems(data)
+
+    def handle_comment(self, data):
+        # Revisión de Codex: los comentarios condicionales (<!--[if IE]>...) pueden
+        # llevar código; dashboard.py no genera comentarios, así que se rechazan todos.
+        self.problems.append("comentario HTML")
+
+    def handle_decl(self, decl):
+        if decl.lower() != "doctype html":
+            self.problems.append("declaración no permitida")
 
     def handle_pi(self, data):
         self.problems.append("instrucción de procesamiento")
@@ -145,8 +179,8 @@ def _validate_dashboard(text: str) -> None:
     checker = _DashboardChecker()
     checker.feed(text)
     checker.close()
-    if EXTERNAL_URL.search(text) or re.search(r"javascript:", text, re.I):
-        checker.problems.append("URL externa o javascript:")
+    if EXTERNAL_URL.search(text) or LINKABLE.search(text):
+        checker.problems.append("URL externa, esquema o dirección enlazable")
     if checker.problems:
         raise PublicationError(f"{name}: contiene scripts o contenido no permitido "
                                f"({'; '.join(sorted(set(checker.problems)))})")
