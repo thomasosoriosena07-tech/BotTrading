@@ -68,8 +68,8 @@ holdout final, que se evalúa una sola vez (T017).
   y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
   reconciliación reales OK; estado privado movido a
   %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 (guarda de
-  publicación) CERRADO. F4 implementado (pendiente de Codex y de la primera
-  orden real). Lectura (a) y envío de órdenes demo (b) aprobados. Fases
+  publicación) CERRADO. F4: primera orden demo real ejecutada y repetición
+  sin duplicado (2026-10-14). Lectura (a) y envío de órdenes demo (b) aprobados. Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
 ## Reglas
@@ -924,3 +924,21 @@ readme.md.
   palabra desde PowerShell 5.1 añade caracteres invisibles y el comando
   cancela sin cambios; desde bash funciona.) Pendiente: el usuario sustituye
   la credencial BotTrading-Demo por la nueva y borra BotTrading-Demo-Nueva.
+
+## Registro T021 F4: primera orden real en la cuenta demo (2026-10-14 03:54 UTC)
+Por orden del usuario ("cambio hecho, envia la orden"):
+- check con la clave nueva: reconciliación OK (HMAC verificado).
+- run en simulación: Orden bt-BTCUSDT-20260817-B BUY por 1000.00 USDT.
+- run --send-orders con BOTTRADING_DEMO_ORDERS=1 (solo para ese comando):
+  FINAL FILLED, ejecutado 0.01193 BTC por 999.73 USDT (precio medio
+  ~83 800); comisión 0.00001193 BTC (0,1 %, igual al supuesto de D014).
+  Reconciliación posterior OK: BTC efectivo 0.27 USDT, cantidad 0.01191807,
+  coste 999.73; ETH y SOL sin posición (1000 USDT).
+- Registro privado: INTENT 03:54:29, SENT 03:54:35 (6 s = 3 consultas
+  previas con pausas de 2 s), FINAL FILLED 03:54:36.
+- Repetir run --send-orders: "Sin órdenes: la cuenta ya coincide con la
+  posición objetivo"; 0 envíos; reconciliación OK.
+- Coherencia con paper (T019): la señal es la misma (BUY de BTC del
+  2026-08-17). Ejecución ~3 h 54 min después de la apertura de 00:00 UTC;
+  la comparación de precio frente al modelo (apertura + 0,05 %) es parte de
+  F5/F6. Esto valida la ejecución, no la rentabilidad.
