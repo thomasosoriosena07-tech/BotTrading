@@ -109,8 +109,10 @@ def test_run_journal_appends_and_reads_back(tmp_path):
     at = datetime(2026, 10, 14, 13, 5, tzinfo=timezone.utc)
     append_run(path, at.date(), at, "ok", 1, "sin incidencias")
     append_run(path, at.date(), at, "detenido", 0, "reloj desfasado\nlínea 2")
+    append_run(path, at.date(), at, "detenido", None, "registro ilegible")
     entries = read_runs(path)
-    assert [e.outcome for e in entries] == ["ok", "detenido"]
+    assert [e.outcome for e in entries] == ["ok", "detenido", "detenido"]
+    assert [e.orders for e in entries] == [1, 0, None]
     assert entries[1].detail == "reloj desfasado línea 2"
     path.write_text("otra,cabecera\n", encoding="utf-8")
     with pytest.raises(ValueError, match="cabecera"):

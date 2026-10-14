@@ -1040,3 +1040,8 @@ DECISIONS.md, readme.md.
   registro no se puede abrir, anota "envíos: desconocido", nunca 0. Pruebas:
   resultado desconocido -> detenido con 1 envío, repetición con 0; registro
   ilegible -> desconocido. 730 passed.
+- Revisión de Codex de 6373e17 (transmitida por el usuario): con el registro
+  ilegible, el diario guardaba 0 en la columna de envíos junto a
+  "desconocido". Corregido: la columna admite vacío (None = desconocido);
+  se escribe vacía y se lee como None, nunca 0. Pruebas: columna vacía y
+  lectura None. 730 passed.

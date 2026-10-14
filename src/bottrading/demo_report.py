@@ -129,11 +129,11 @@ class RunEntry:
     day: date
     at: str
     outcome: str  # "ok", "incidencia" (rechazo o sin resolver) o "detenido"
-    orders: int
+    orders: int | None  # envíos reales; None = desconocido (registro ilegible)
     detail: str
 
 
-def append_run(path: Path, day: date, at: datetime, outcome: str, orders: int,
+def append_run(path: Path, day: date, at: datetime, outcome: str, orders: int | None,
                detail: str) -> None:
     """Añade una línea al diario privado de ejecuciones (solo de añadir)."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -142,7 +142,8 @@ def append_run(path: Path, day: date, at: datetime, outcome: str, orders: int,
     writer = csv.writer(buffer, lineterminator="\n")
     if new:
         writer.writerow(RUN_COLUMNS)
-    writer.writerow([day.isoformat(), at.isoformat(timespec="seconds"), outcome, orders,
+    writer.writerow([day.isoformat(), at.isoformat(timespec="seconds"), outcome,
+                     "" if orders is None else orders,
                      detail.replace("\n", " ")[:300]])
     with open(path, "a", encoding="utf-8", newline="") as handle:
         handle.write(buffer.getvalue())
@@ -156,7 +157,8 @@ def read_runs(path: Path) -> list[RunEntry]:
     rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
     if not rows or rows[0] != RUN_COLUMNS:
         raise ValueError(f"{path.name}: cabecera inesperada")
-    return [RunEntry(date.fromisoformat(r[0]), r[1], r[2], int(r[3]), r[4]) for r in rows[1:]]
+    return [RunEntry(date.fromisoformat(r[0]), r[1], r[2], int(r[3]) if r[3] else None, r[4])
+            for r in rows[1:]]
 
 
 def clean_streak(runs: Sequence[RunEntry], today: date) -> int:

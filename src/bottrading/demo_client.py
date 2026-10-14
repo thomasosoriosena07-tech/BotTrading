@@ -732,7 +732,7 @@ def main(argv: Sequence[str] | None = None, *,
     return 1
 
 
-def _posts_since(paths, started) -> tuple[int, str]:
+def _posts_since(paths, started) -> tuple[int | None, str]:
     """Envíos reales de una ejecución detenida, contados en el registro privado.
     Si el registro no se puede abrir, se anota como desconocido, nunca como 0."""
     posts, problem = 0, None
@@ -741,7 +741,8 @@ def _posts_since(paths, started) -> tuple[int, str]:
             posts = ledger.sent_since(started)
     except (OSError, ValueError, StopTheDay, LedgerIntegrityError) as error:
         problem = type(error).__name__
-    return (0, f" (envíos: desconocido, {problem})") if problem else (posts, "")
+    # Desconocido también en la columna de envíos (None), nunca 0 (revisión de Codex).
+    return (None, f" (envíos: desconocido, {problem})") if problem else (posts, "")
 
 
 def _journal(paths, clock, outcome, orders, detail, out) -> None:

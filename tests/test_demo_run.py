@@ -539,3 +539,5 @@ def test_unreadable_ledger_journals_unknown_posts_not_zero(world):
     assert code == 1 and exchange.posts() == []
     (entry,) = read_runs(paths.runs)
     assert entry.outcome == "detenido" and "envíos: desconocido" in entry.detail
+    assert entry.orders is None  # ni 0 ni un número inventado
+    assert paths.runs.read_text(encoding="utf-8").splitlines()[1].split(",")[3] == ""
