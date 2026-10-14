@@ -1186,3 +1186,8 @@ passed, 4 skipped.
 - Pendiente: revisión de Codex de I3 y decisión del usuario sobre cerrar el
   experimento ya (sin abrir el holdout, que queda sin ver para futuros
   experimentos) o construir I4 y abrirlo en 2027-02 solo como registro.
+- Revisión de Codex de I3: reprodujo la validación con los mismos SHA-256
+  (validation.md 9283ad45…, validation_trials.csv 7e7096c6…). Confirma que,
+  con C7 incumplido, según A.9 solo cabe RECHAZADO. P2 corregido: la CLI
+  rechaza por su nombre, antes de leerlos, los ZIP desde 2026-10. P3: prueba de
+  prefijos exhaustiva añadida. 829 passed, 4 skipped; informe idéntico.
