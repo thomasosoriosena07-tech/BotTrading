@@ -9,6 +9,14 @@
 #   (kill switch); el bot no consulta ni envia nada mientras exista.
 # - No publica nada en Git. Log en reports/automation/demo_<fecha>.log (ignorado).
 
+function Hide-Secrets([string]$Line) {
+    # Barrera propia del log (revision de Codex): la CLI ya oculta claves, pero
+    # si una excepcion inesperada las mostrara, aqui se tapan igualmente.
+    $Line = $Line -replace '(?<![A-Za-z0-9])[A-Za-z0-9]{64}(?![A-Za-z0-9])', '[oculto]'
+    $Line = $Line -replace 'signature=[^&\s]*', 'signature=[oculto]'
+    return ($Line -replace '(?i)X-MBX-APIKEY\S*\s*\S*', 'X-MBX-APIKEY [oculto]')
+}
+
 function Invoke-DemoDaily {
     $ErrorActionPreference = "Continue"
     $repo = Split-Path -Parent $PSScriptRoot
@@ -22,7 +30,8 @@ function Invoke-DemoDaily {
     "$(Get-Date -Format s) inicio" | Out-File -Append -Encoding utf8 $log
     $env:BOTTRADING_DEMO_ORDERS = "1"
     try {
-        $output = & $python -m bottrading.demo_client run --send-orders 2>&1 | ForEach-Object { "$_" }
+        $output = & $python -m bottrading.demo_client run --send-orders 2>&1 |
+            ForEach-Object { Hide-Secrets "$_" }
         $code = $LASTEXITCODE
         $output | Out-File -Append -Encoding utf8 $log
         "$(Get-Date -Format s) fin, codigo $code" | Out-File -Append -Encoding utf8 $log

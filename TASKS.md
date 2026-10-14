@@ -958,3 +958,12 @@ Archivos: scripts/demo_daily.ps1 (nuevo, ASCII), DECISIONS.md, readme.md.
   sesión); próxima ejecución 2026-10-14 08:00.
 - Pendiente: informe de ejecución (previsto frente a ejecutado) y revisión
   de Codex de este paso.
+- Revisión de Codex de dbf28a1 (transmitida por el usuario): requiere
+  cambios; demo no comprobaba el resultado de paper. Corregido: nuevo
+  scripts/daily.ps1, única acción de la tarea, ejecuta paper y SOLO si
+  termina con código 0 ejecuta demo; log de la cadena en
+  reports/automation/daily_<fecha>.log. demo_daily.ps1 filtra además su log
+  (claves de 64 caracteres, signature=, cabecera X-MBX-APIKEY). Pruebas
+  scripts/test_daily_chain.ps1: 8/8 (paper falla -> demo no corre; paper OK
+  -> demo corre; filtro). Tarea real lanzada a las 23:07: paper 0, demo 0
+  ("Sin órdenes"), resultado 0. Próxima ejecución 2026-10-14 08:00.

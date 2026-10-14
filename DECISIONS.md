@@ -847,9 +847,11 @@ F4 (aprobación (b), 2026-10-13):
 
 F5 (aprobado por el usuario, 2026-10-13: "si hazlo como lo recomiendas ...
 quiero que automaticemos el bot lo mas rapido"):
-- Opción (a): scripts/demo_daily.ps1 es la SEGUNDA acción de la tarea
-  "BotTrading paper trading" (08:00 Colombia), después de paper_daily.ps1, y
-  usa los mismos datos ya descargados. Cambia el plan inicial de 00:05 UTC:
+- Opción (a): la tarea "BotTrading paper trading" (08:00 Colombia) tiene una
+  sola acción, scripts/daily.ps1, que ejecuta paper_daily.ps1 y SOLO si
+  termina con código 0 ejecuta demo_daily.ps1 (revisión de Codex: un fallo de
+  paper tras descargar datos no debe dejar operar a demo). Demo usa los
+  mismos datos ya descargados. Cambia el plan inicial de 00:05 UTC:
   los archivos diarios de Binance se publican horas después de la medianoche
   UTC, y así demo y paper usan exactamente las mismas velas. El retraso
   frente a la apertura (~13 h) se medirá e informará.

@@ -116,8 +116,8 @@ Fase experimental: valida la ejecución, no la rentabilidad. No envía
    simula. Para enviar de verdad a la cuenta DEMO hacen falta las dos cosas:
    `$env:BOTTRADING_DEMO_ORDERS = "1"` y `... run --send-orders`, y que la
    clave tenga el permiso de trading activado en Binance Demo.
-7. Automático (F5): `scripts/demo_daily.ps1` corre cada día después de paper
-   en la misma tarea programada. Para pararlo, crea el archivo `STOP` en
+7. Automático (F5): la tarea diaria ejecuta `scripts/daily.ps1`: paper y, solo
+   si paper termina bien, `scripts/demo_daily.ps1`. Para pararlo, crea el archivo `STOP` en
    `%USERPROFILE%\.bottrading\demo\`. Log en `reports/automation/demo_<fecha>.log`.
 
 El estado privado vive en `%USERPROFILE%\.bottrading\demo\`, fuera del
