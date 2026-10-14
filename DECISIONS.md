@@ -864,7 +864,7 @@ quiero que automaticemos el bot lo mas rapido"):
   reloj llegó a ir 1018 ms adelantado; el límite de 1000 ms detuvo demo. Ahora
   se mide el desfase con /api/v3/time al empezar y se firma con la hora del
   SERVIDOR (lo que recomienda Binance); la fecha del día también sale de esa
-  hora corregida. Se detiene si el desfase supera 30 s (reloj roto).
+  hora corregida. Se detiene si el desfase es de 30 s o más (reloj roto).
 - Pendiente de F5: informe de ejecución (precio previsto frente a ejecutado,
   comisión, retraso, rechazos) y criterio de 30 días sin discrepancias.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese

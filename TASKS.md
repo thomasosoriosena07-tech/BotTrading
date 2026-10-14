@@ -991,9 +991,15 @@ Archivos: scripts/demo_daily.ps1 (nuevo, ASCII), DECISIONS.md, readme.md.
 - demo: DETENIDO por seguridad, "reloj desfasado 1018 ms". Causa: Windows
   sincroniza la hora una vez por semana (fuente "Local CMOS Clock"; w32tm
   /resync exige administrador). Corregido en el bot: firma con la hora del
-  servidor y solo se detiene con más de 30 s de desfase. Pruebas: desfases de
+  servidor y solo se detiene con 30 s o más de desfase. Pruebas: desfases de
   1018, -1500 y 29000 ms firman con la hora del servidor; 31000 ms se detiene
   antes de cualquier petición firmada. 716 passed.
 - check real con 1017 ms de desfase: OK. Paso demo de hoy ejecutado a mano:
   "Sin órdenes" (BTC dentro; ETH y SOL fuera), reconciliación OK, código 0.
 - Recomendado al usuario: activar "Establecer la hora automáticamente".
+- Revisión de Codex de 5d754fc y 244dd21 (transmitida por el usuario):
+  "listo". Confirma que no se firma antes de medir el desfase, que el reloj
+  corregido se usa en firmas, fecha del día, run y rekey, que la protección
+  de datos viejos se mantiene y el filtro del log. Observación menor: el
+  código se detiene con abs(desfase) >= 30 s; alineada la redacción de D030 y
+  de este registro (30 s o más). 716 passed; test_daily_chain 35/35.
