@@ -1109,3 +1109,10 @@ informe), tests/test_demo_dashboard.py (nuevo), tests/test_demo_run.py, readme.m
   Pruebas: hard link en el bloqueo, cambio de identidad simulado, symlink
   roto (se salta sin modo desarrollador), reutilización normal. 749 passed,
   3 skipped. check real OK.
+- Revisión de Codex de b118762 (transmitida por el usuario): F5 CERRADO para
+  el uso previsto. Confirma la creación exclusiva del bloqueo, la verificación
+  de identidad y hard links, y el bloqueo entre procesos. Precisión: abrir un
+  symlink existente puede abrir su destino un instante antes de rechazarlo (sin
+  crearlo ni modificarlo). Límite aceptado y anotado en D030: manipulación local
+  concurrente fuera del modelo de amenazas. Lo construido de F5 queda completo;
+  falta solo acumular 30 días sin incidencias y después F6.

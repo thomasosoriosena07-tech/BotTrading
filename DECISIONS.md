@@ -877,6 +877,12 @@ quiero que automaticemos el bot lo mas rapido"):
   (también por el kill switch) o incidencia la cortan.
   execution_report.md es PRIVADO, junto al registro; no se publica. Comando
   `report` de solo lectura (funciona aunque esté el kill switch).
+- Modelo de amenazas del estado privado (revisiones de Codex, 2026-10-14): las
+  escrituras sustituyen el destino (nunca escriben a través de enlaces) y el
+  bloqueo se abre sin seguir enlaces. Queda FUERA del modelo la manipulación
+  local concurrente de la carpeta privada (otro proceso con el mismo usuario que
+  sustituya la carpeta o el archivo de bloqueo durante la ejecución): ese
+  proceso podría además leer la credencial, y ninguna medida local lo impide.
 - Pendiente de F5 (resto): 30 días seguidos sin incidencias;
   comisión, retraso, rechazos) y criterio de 30 días sin discrepancias.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
