@@ -150,6 +150,9 @@ def read_manifest(path: Path) -> list[tuple[str, int, str]]:
         for row in reader:
             if len(row) != len(MANIFEST_COLUMNS) or not row[1].isdigit():
                 raise DataValidationError(f"{path.name}:{reader.line_num}: fila no válida")
+            if any(name == row[0] for name, _, _ in rows):
+                raise DataValidationError(
+                    f"{path.name}:{reader.line_num}: archivo repetido en el manifiesto: {row[0]}")
             rows.append((row[0], int(row[1]), row[2]))
         return rows
 

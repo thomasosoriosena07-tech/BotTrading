@@ -197,6 +197,16 @@ def test_manifest_detects_changes_missing_and_extra_files(tmp_path):
     assert check_manifest(manifest, [first]) == [f"tamaño o SHA-256 distinto: {first.name}"]
 
 
+def test_manifest_with_repeated_file_is_rejected(tmp_path):
+    # Revisión de Codex (I1): un manifiesto alterado con un nombre repetido no se acepta.
+    path = write_zip(tmp_path / "data", "BTCUSDT-15m-2024-01.zip", series(JAN, 2))
+    text = render_manifest(build_manifest([path]))
+    manifest = tmp_path / "m.csv"
+    manifest.write_text(text + text.splitlines()[1] + "\n", encoding="utf-8")
+    with pytest.raises(DataValidationError, match="repetido"):
+        check_manifest(manifest, [path])
+
+
 def test_cli_writes_manifest_once_then_checks_it(tmp_path, capsys):
     data = tmp_path / "data"
     write_zip(data, "BTCUSDT-15m-2024-01.zip", series(JAN, 3))
@@ -227,24 +237,37 @@ def test_zip_files_lists_only_zips_in_name_order(tmp_path):
 # --- aislamiento (A.3-4) ---------------------------------------------------------------
 
 
+def _imports(path: Path) -> list[str]:
+    names = []
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            names += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names.append(node.module or "")
+    return names
+
+
 def test_experiment_modules_never_import_demo_or_network_modules():
+    # Recorre también, de forma transitiva, los módulos de bottrading de los que dependen
+    # (revisión de Codex de I1: la guarda no debe limitarse a exp15m*.py).
     package = Path(exp15m_data.__file__).parent
     forbidden = {"demo_client", "demo_ledger", "demo_reconcile", "demo_report",
                  "demo_dashboard", "execution", "download", "paper", "publication",
-                 "urllib", "socket", "http", "requests", "ssl"}
-    modules = sorted(package.glob("exp15m*.py"))
-    assert modules
-    for module in modules:
-        tree = ast.parse(module.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            names = []
-            if isinstance(node, ast.Import):
-                names = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                names = [node.module or ""]
-            for name in names:
-                parts = set(name.split("."))
-                assert not parts & forbidden, f"{module.name} importa {name}"
+                 "urllib", "socket", "http", "requests", "ssl", "importlib"}
+    pending = sorted(package.glob("exp15m*.py"))
+    assert pending
+    seen: set[Path] = set()
+    while pending:
+        module = pending.pop()
+        if module in seen:
+            continue
+        seen.add(module)
+        for name in _imports(module):
+            parts = name.split(".")
+            assert not set(parts) & forbidden, f"{module.name} importa {name}"
+            if parts[0] == "bottrading" and len(parts) > 1:
+                pending.append(package / f"{parts[1]}.py")
+    assert package / "binance.py" in seen  # la dependencia del baseline también se revisa
 
 
 def test_package_is_imported_from_this_worktree():
