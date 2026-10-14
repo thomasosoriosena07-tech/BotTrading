@@ -35,16 +35,24 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import ROUND_DOWN, Decimal
 from pathlib import Path
 
 from bottrading.demo_ledger import (
+    REPO_ROOT,
+    DuplicateOrder,
+    GatewayRejected,
+    GatewayUnknown,
     LedgerIntegrityError,
     OrderLedger,
+    OrderStatus,
     StopTheDay,
     default_ledger_path,
+    execute_intent,
 )
 from bottrading.demo_reconcile import (
     load_baseline,
@@ -53,7 +61,15 @@ from bottrading.demo_reconcile import (
     symbol_info,
     take_baseline,
 )
-from bottrading.execution import DEMO_SYMBOLS
+from bottrading.execution import (
+    DEMO_SYMBOLS,
+    LimitExceeded,
+    OrderIntent,
+    check_limits,
+    target_intents,
+)
+from bottrading.paper import load_forward_candles
+from bottrading.strategy import Signal
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +97,11 @@ class DemoApiError(DemoClientError):
     """Respuesta de error de la API, clasificada sin copiar el cuerpo."""
 
     def __init__(self, method: str, path: str, status: int | None,
-                 code: int | None = None, retry_after: int | None = None):
+                 code: int | None = None, retry_after: int | None = None,
+                 duplicate: bool = False):
         self.method, self.path, self.status = method, path, status
         self.code, self.retry_after = code, retry_after
+        self.duplicate = duplicate  # -2010 "Duplicate order sent." (sin guardar el texto)
         super().__init__(f"{method} {path}: {self.kind} (HTTP {status}, código {code})")
 
     @property
@@ -113,6 +131,14 @@ PATTERNS = {
     "limit": re.compile(r"[1-9][0-9]{0,2}|1000"),  # 1..1000
     "origClientOrderId": re.compile(r"bt-[A-Za-z0-9_-]{1,33}"),
     "omitZeroBalances": re.compile(r"true|false"),
+    # Órdenes (aprobación (b) de D030): solo MARKET, solo ids del bot, cantidades
+    # decimales sin exponente ni signo.
+    "side": re.compile(r"BUY|SELL"),
+    "type": re.compile(r"MARKET"),
+    "newClientOrderId": re.compile(r"bt-[A-Za-z0-9_-]{1,33}"),
+    "quantity": re.compile(r"[0-9]{1,12}(?:\.[0-9]{1,8})?"),
+    "quoteOrderQty": re.compile(r"[0-9]{1,12}(?:\.[0-9]{1,8})?"),
+    "newOrderRespType": re.compile(r"RESULT"),
     "signature": re.compile(r"[0-9a-f]{64}"),
 }
 
@@ -129,8 +155,10 @@ def _signed(required: str = "", optional: str = "") -> Endpoint:
                     frozenset(optional.split() + ["recvWindow"]))
 
 
-# Solo lectura. POST/DELETE /api/v3/order se añadirán únicamente tras la
-# aprobación (b) de D030.
+# POST/DELETE /api/v3/order: añadidos con la aprobación (b) de D030 (órdenes
+# MARKET en la cuenta DEMO). Solo un DemoClient creado con trading=True puede
+# prepararlos; el resto del tiempo el cliente es de solo lectura.
+WRITE_METHODS = frozenset({"POST", "DELETE"})
 ENDPOINTS: Mapping[tuple[str, str], Endpoint] = {
     ("GET", "/api/v3/time"): Endpoint(False),
     ("GET", "/api/v3/exchangeInfo"): Endpoint(False, frozenset({"symbol"})),
@@ -140,6 +168,9 @@ ENDPOINTS: Mapping[tuple[str, str], Endpoint] = {
     ("GET", "/api/v3/openOrders"): _signed("symbol"),
     ("GET", "/api/v3/allOrders"): _signed("symbol", "orderId startTime endTime limit"),
     ("GET", "/api/v3/myTrades"): _signed("symbol", "orderId startTime endTime fromId limit"),
+    ("POST", "/api/v3/order"): _signed("symbol side type newClientOrderId newOrderRespType",
+                                       "quantity quoteOrderQty"),
+    ("DELETE", "/api/v3/order"): _signed("symbol origClientOrderId"),
 }
 
 
@@ -195,6 +226,12 @@ def validate_request(method: str, url: str,
             raise RequestRefused(f"{parts.path}: valor no permitido en {key}")
     if "recvWindow" in keys and int(dict(pairs)["recvWindow"]) > RECV_WINDOW_MS:
         raise RequestRefused(f"{parts.path}: recvWindow mayor que {RECV_WINDOW_MS}")
+    if method == "POST":
+        values = dict(pairs)
+        amount = "quoteOrderQty" if values["side"] == "BUY" else "quantity"
+        if {"quantity", "quoteOrderQty"} & set(keys) != {amount} or float(values[amount]) <= 0:
+            raise RequestRefused(f"{parts.path}: la compra va por quoteOrderQty y la venta "
+                                 "por quantity, siempre mayores que 0")
     if urllib.parse.urlencode(pairs) != parts.query:
         raise RequestRefused(f"{parts.path}: query con codificación no canónica")
     if endpoint.signed:
@@ -359,8 +396,23 @@ class DemoClient:
 
     def __init__(self, credentials: Callable[[], Credentials] | None = read_windows_credential,
                  transport: Transport = urllib_transport,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time, *, trading: bool = False):
         self._credentials, self._transport, self._clock = credentials, transport, clock
+        self._trading = trading  # solo con --send-orders y BOTTRADING_DEMO_ORDERS=1
+
+    def new_market_order(self, symbol: str, side: str, client_order_id: str, *,
+                         quantity: str | None = None, quote_order_qty: str | None = None) -> dict:
+        params = {"symbol": symbol, "side": side, "type": "MARKET",
+                  "newClientOrderId": client_order_id, "newOrderRespType": "RESULT"}
+        if quantity is not None:
+            params["quantity"] = quantity
+        if quote_order_qty is not None:
+            params["quoteOrderQty"] = quote_order_qty
+        return self._send("POST", "/api/v3/order", params)
+
+    def cancel_order(self, symbol: str, client_order_id: str) -> dict:
+        return self._send("DELETE", "/api/v3/order",
+                          {"symbol": symbol, "origClientOrderId": client_order_id})
 
     def server_time(self) -> int:
         return self._get("/api/v3/time", {})["serverTime"]
@@ -392,11 +444,14 @@ class DemoClient:
             params["fromId"] = str(from_id)
         return self._get("/api/v3/myTrades", params)
 
-    def prepare(self, path: str, params: Mapping[str, str]) -> tuple[PreparedRequest, dict]:
-        """Construye, firma y valida la petición GET; devuelve también las cabeceras."""
-        endpoint = ENDPOINTS.get(("GET", path))
+    def prepare(self, path: str, params: Mapping[str, str],
+                method: str = "GET") -> tuple[PreparedRequest, dict]:
+        """Construye, firma y valida la petición; devuelve también las cabeceras."""
+        if method in WRITE_METHODS and not self._trading:
+            raise RequestRefused(f"cliente de solo lectura: {method} no permitido")
+        endpoint = ENDPOINTS.get((method, path))
         if endpoint is None:
-            raise RequestRefused(f"petición no permitida: GET {path}")
+            raise RequestRefused(f"petición no permitida: {method} {path}")
         query, headers = urllib.parse.urlencode(list(params.items())), {}
         verify = None
         if endpoint.signed:
@@ -408,8 +463,8 @@ class DemoClient:
             verify = lambda payload, signature: hmac.compare_digest(  # noqa: E731
                 sign(credentials.secret, payload), signature)
         url = f"{BASE_URL}{path}?{query}" if query else f"{BASE_URL}{path}"
-        validate_request("GET", url, verify)
-        return PreparedRequest("GET", url, path, endpoint.signed), headers
+        validate_request(method, url, verify)
+        return PreparedRequest(method, url, path, endpoint.signed), headers
 
     def _read_credentials(self) -> Credentials:
         if self._credentials is None:
@@ -417,24 +472,36 @@ class DemoClient:
         return self._credentials()
 
     def _get(self, path: str, params: Mapping[str, str]):
-        request, headers = self.prepare(path, params)
+        return self._send("GET", path, params)
+
+    def _send(self, method: str, path: str, params: Mapping[str, str]):
+        request, headers = self.prepare(path, params, method)
         response = self._transport(request, headers)
         if response.url != request.url:
             raise RequestRefused(f"{path}: la respuesta procede de otro URL")
-        logger.info("GET %s -> HTTP %s", path, response.status)
+        logger.info("%s %s -> HTTP %s", method, path, response.status)
         if response.status != 200:
-            raise DemoApiError("GET", path, response.status, _error_code(response.body),
-                               response.retry_after)
+            code = _error_code(response.body)
+            raise DemoApiError(method, path, response.status, code, response.retry_after,
+                               duplicate=code == -2010 and _is_duplicate(response.body))
         try:
             return json.loads(response.body)
         except ValueError:  # JSONDecodeError guarda el cuerpo en .doc: no se encadena
             pass
-        raise DemoApiError("GET", path, response.status)
+        raise DemoApiError(method, path, response.status)
 
 
 def sign(secret: str, payload: str) -> str:
     """HMAC-SHA256 en hexadecimal (firma de Binance para claves HMAC)."""
     return hmac.new(secret.encode("ascii"), payload.encode("ascii"), hashlib.sha256).hexdigest()
+
+
+def _is_duplicate(body: bytes) -> bool:
+    """Solo distingue "Duplicate order sent."; el texto no se guarda."""
+    try:
+        return json.loads(body).get("msg") == "Duplicate order sent."
+    except (ValueError, AttributeError):
+        return False
 
 
 def _error_code(body: bytes) -> int | None:
@@ -446,7 +513,76 @@ def _error_code(body: bytes) -> int | None:
     return code if isinstance(code, int) else None
 
 
-# --- línea de comandos (F3, solo lectura) --------------------------------------------
+# --- adaptador del protocolo (F4, aprobación (b) de D030) ---------------------------
+
+QUOTE_STEP = Decimal("0.01")  # USDT: la compra se redondea hacia abajo a céntimos
+
+
+def order_amounts(intent: OrderIntent, step_size: Decimal) -> tuple[str | None, str | None]:
+    """(quantity, quoteOrderQty) deterministas para una intención, redondeados
+    hacia abajo: compra por USDT a céntimos, venta por cantidad a stepSize."""
+    if intent.side is Signal.BUY:
+        quote = Decimal(repr(intent.quote_amount)).quantize(QUOTE_STEP, rounding=ROUND_DOWN)
+        return None, format(quote, "f")
+    units = (Decimal(repr(intent.quantity)) / step_size).to_integral_value(rounding=ROUND_DOWN)
+    return format((units * step_size).normalize(), "f"), None
+
+
+def _positive(amounts: tuple[str | None, str | None]) -> bool:
+    return any(value is not None and Decimal(value) > 0 for value in amounts)
+
+
+class DemoGateway:
+    """Gateway del protocolo de demo_ledger sobre DemoClient (solo cuenta demo).
+
+    Contrato (D030): GatewayRejected solo para rechazos 4XX previos al motor;
+    5XX, -1007, 429/418 y fallos de transporte son GatewayUnknown; "Duplicate
+    order sent." es DuplicateOrder. Las excepciones se lanzan fuera del except.
+    """
+
+    def __init__(self, client: "DemoClient", step_sizes: Mapping[str, Decimal]):
+        self._client, self._steps = client, dict(step_sizes)
+
+    def query(self, intent: OrderIntent) -> OrderStatus | None:
+        failure, answer = None, None
+        try:
+            answer = self._client.order(intent.symbol, intent.client_order_id)
+        except DemoApiError as error:
+            failure = "absent" if error.code == -2013 else "unknown"
+        if failure == "absent":
+            return None
+        if failure == "unknown":
+            raise GatewayUnknown()
+        return _status(answer)
+
+    def submit(self, intent: OrderIntent) -> OrderStatus:
+        quantity, quote = order_amounts(intent, self._steps[intent.symbol])
+        outcome, answer = None, None
+        try:
+            answer = self._client.new_market_order(
+                intent.symbol, intent.side.value.upper(), intent.client_order_id,
+                quantity=quantity, quote_order_qty=quote)
+        except DemoApiError as error:
+            outcome = ("duplicate" if error.duplicate else
+                       "rejected" if error.kind == "rejected" else "unknown", error.code)
+        if outcome is not None:
+            kind, code = outcome
+            if kind == "duplicate":
+                raise DuplicateOrder()
+            if kind == "rejected":
+                raise GatewayRejected(code)
+            raise GatewayUnknown()
+        return _status(answer)
+
+
+def _status(answer: Mapping) -> OrderStatus:
+    status, executed = answer.get("status"), answer.get("executedQty")
+    if not isinstance(status, str) or not isinstance(executed, str):
+        raise GatewayUnknown()  # respuesta incompleta: se resolverá por consulta
+    return OrderStatus(status, float(Decimal(executed)))
+
+
+# --- línea de comandos (F3 solo lectura; F4 run) -------------------------------------
 
 MAX_CLOCK_SKEW_MS = 1000  # Binance rechaza marcas >= 1 s por delante del servidor
 CONFIRMATION_WORD = "INICIALIZAR"
@@ -464,11 +600,17 @@ class DemoPaths:
         return cls(ledger, ledger.with_name("baseline.json"), ledger.with_name("STOP"))
 
 
+ORDERS_ENV = "BOTTRADING_DEMO_ORDERS"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m bottrading.demo_client",
-        description="Cuenta Binance Spot DEMO, solo lectura (D030). No envía órdenes.")
-    parser.add_argument("command", choices=("check", "init", "reconcile"))
+        description="Cuenta Binance Spot DEMO (D030). Solo envía órdenes con run, "
+                    f"--send-orders y {ORDERS_ENV}=1.")
+    parser.add_argument("command", choices=("check", "init", "reconcile", "run"))
+    parser.add_argument("--send-orders", action="store_true",
+                        help="run: envía de verdad (exige también la variable de entorno)")
     return parser
 
 
@@ -478,23 +620,34 @@ def main(argv: Sequence[str] | None = None, *,
          clock: Callable[[], float] = time.time,
          paths: DemoPaths | None = None,
          ask: Callable[[str], str] = input,
-         out: Callable[[str], None] = print) -> int:
+         out: Callable[[str], None] = print,
+         environ: Mapping[str, str] | None = None,
+         data_dir: Path | None = None,
+         sleep: Callable[[float], None] = time.sleep) -> int:
     """0 si todo está bien; 1 si hay que detenerse. Nunca muestra claves.
 
     Todo comando comprueba primero el reloj (antes de cualquier petición
     firmada) y, salvo el diagnóstico de check, el kill switch.
     """
-    command = build_parser().parse_args(argv).command
+    args = build_parser().parse_args(argv)
+    command = args.command
+    environ = os.environ if environ is None else environ
+    # Doble consentimiento (D030): solo elige entre simulación y envío DENTRO de
+    # demo; el host y la tabla de peticiones siguen fijos.
+    send = command == "run" and args.send_orders and environ.get(ORDERS_ENV) == "1"
     failure = None
     try:
         paths = paths or DemoPaths.default()
-        client = DemoClient(credentials, transport, clock)
+        client = DemoClient(credentials, transport, clock, trading=send)
         if command != "check":
             _assert_no_kill_switch(paths)
         _assert_clock(client, clock, out)
+        if command == "run":
+            return _run(client, credentials, clock, paths, out, send,
+                        data_dir or REPO_ROOT / "data", sleep)
         handler = {"check": _check, "init": _init, "reconcile": _reconcile}[command]
         return handler(client, credentials, clock, paths, ask, out)
-    except (DemoClientError, StopTheDay, LedgerIntegrityError) as error:
+    except (DemoClientError, StopTheDay, LedgerIntegrityError, LimitExceeded) as error:
         failure = str(error)  # mensajes saneados: sin claves, query ni cuerpo
     except (OSError, ValueError, KeyError) as error:  # E/S o archivos privados ilegibles
         failure = f"{type(error).__name__}: {error}"
@@ -574,6 +727,61 @@ def _reconcile(client, credentials, clock, paths, ask, out) -> int:
         result = reconcile(client, ledger, baseline)
     out(f"Reconciliación: OK (cobertura desde {result.coverage.since})")
     for symbol, holding in sorted(result.holdings.items()):
+        out(f"  {symbol}: efectivo {holding.cash:.2f} USDT, cantidad {holding.quantity}, "
+            f"coste {holding.cost:.2f}")
+    return 0
+
+
+def _run(client, credentials, clock, paths, out, send, data_dir, sleep) -> int:
+    """Alinea la cuenta demo con la posición objetivo de la estrategia (F4).
+
+    Orden: resolver órdenes pendientes (solo consultas) -> reconciliar ->
+    posición objetivo con velas cerradas hasta ayer -> límites -> enviar con
+    el protocolo idempotente -> reconciliar otra vez. Sin envío confirmado,
+    solo muestra lo que haría.
+    """
+    out("MODO: " + ("ENVÍO de órdenes a la cuenta DEMO" if send else
+                    f"simulación (falta --send-orders y {ORDERS_ENV}=1); no se envía nada"))
+    baseline = load_baseline(paths.baseline, credentials().secret)
+    today = datetime.fromtimestamp(clock(), timezone.utc).date()
+    with OrderLedger(paths.ledger) as ledger:
+        steps = {s: symbol_info(client.exchange_info(s), s).step_size for s in DEMO_SYMBOLS}
+        gateway = DemoGateway(client, steps)
+        pending = ledger.unresolved()
+        if pending and not send:
+            raise StopTheDay(f"{len(pending)} órdenes sin resolver: ejecuta run con envío "
+                             "confirmado para resolverlas por consulta")
+        for record in pending:  # SENT/UNKNOWN: solo consultas; nunca se reenvían
+            execute_intent(ledger, gateway, record.intent, sleep)
+        before = reconcile(client, ledger, baseline)
+        candles = {}
+        for symbol in DEMO_SYMBOLS:
+            series, _ = load_forward_candles(data_dir / f"{symbol}-1d",
+                                             data_dir / f"{symbol}-1d-daily")
+            if series[-1].timestamp.date() != today - timedelta(days=1):
+                raise StopTheDay(f"{symbol}: los datos llegan a {series[-1].timestamp.date()}, "
+                                 f"no a {today - timedelta(days=1)}; ejecuta antes la descarga")
+            candles[symbol] = series
+        intents = target_intents(candles, before.holdings)
+        new = [i for i in intents if ledger.record(i.client_order_id) is None]
+        check_limits(new, before.holdings, ledger.orders_recorded_on(today), execution_day=today)
+        for intent in intents:
+            quantity, quote = order_amounts(intent, steps[intent.symbol])
+            if not _positive((quantity, quote)):
+                raise StopTheDay(f"{intent.client_order_id}: importe nulo tras redondear")
+            out(f"Orden: {intent.client_order_id} {intent.side.value.upper()} "
+                + (f"por {quote} USDT" if quote else f"{quantity} {intent.symbol}"))
+        if not intents:
+            out("Sin órdenes: la cuenta ya coincide con la posición objetivo")
+        if not send:
+            return 0
+        for intent in intents:
+            record = execute_intent(ledger, gateway, intent, sleep)
+            out(f"  {intent.client_order_id}: {record.state} {record.status} "
+                f"ejecutado {record.executed_qty}")
+        after = reconcile(client, ledger, baseline)
+    out("Reconciliación posterior: OK")
+    for symbol, holding in sorted(after.holdings.items()):
         out(f"  {symbol}: efectivo {holding.cash:.2f} USDT, cantidad {holding.quantity}, "
             f"coste {holding.cost:.2f}")
     return 0

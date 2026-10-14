@@ -238,13 +238,19 @@ def test_unknown_or_write_endpoints_are_refused_before_signing():
             reader.prepare(path, {})
 
 
-def test_client_is_read_only_by_construction():
-    assert {method for method, _ in ENDPOINTS} == {"GET"}
-    names = {name for name in dir(DemoClient) if not name.startswith("__")}
-    assert not names & {"new_order", "place_order", "cancel_order", "create_order", "post", "delete"}
+def test_client_is_read_only_by_default():
+    # F4 (aprobación (b) de D030): las únicas escrituras son POST y DELETE de
+    # /api/v3/order, y solo un cliente creado con trading=True puede prepararlas.
+    writes = {key for key in ENDPOINTS if key[0] != "GET"}
+    assert writes == {("POST", "/api/v3/order"), ("DELETE", "/api/v3/order")}
+    reader = DemoClient(lambda: Credentials(API_KEY, SECRET), must_not_be_called, CLOCK)
+    with pytest.raises(RequestRefused, match="solo lectura"):
+        reader.new_market_order("BTCUSDT", "BUY", "bt-BTCUSDT-20261012-B", quote_order_qty="10")
+    with pytest.raises(RequestRefused, match="solo lectura"):
+        reader.cancel_order("BTCUSDT", "bt-BTCUSDT-20261012-B")
     order_url = signed_url("/api/v3/order", symbol="BTCUSDT",
                            origClientOrderId="bt-BTCUSDT-20261012-B")
-    for method in ("POST", "DELETE", "PUT"):
+    for method in ("POST", "PUT", "PATCH"):  # GET de consulta no vale como escritura
         with pytest.raises(RequestRefused):
             validate_request(method, order_url, verify)
 

@@ -68,8 +68,8 @@ holdout final, que se evalúa una sola vez (T017).
   y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
   reconciliación reales OK; estado privado movido a
   %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 (guarda de
-  publicación) CERRADO. Siguiente: F4 solo con la aprobación (b). Lectura de
-  cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
+  publicación) CERRADO. F4 implementado (pendiente de Codex y de la primera
+  orden real). Lectura (a) y envío de órdenes demo (b) aprobados. Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
 ## Reglas
@@ -842,3 +842,28 @@ DECISIONS.md (nota en D028), readme.md.
   CERRADO. Riesgo anotado: un cambio futuro que introduzca corchetes en
   report.md será rechazado por el validador (fallo cerrado, intencionado).
   675 passed.
+
+## Registro T021 F4: órdenes demo (Claude Code, 2026-10-13)
+Aprobación (b) del usuario: "avancemos de una vez con f4". Archivos:
+src/bottrading/demo_client.py, demo_ledger.py, execution.py,
+tests/test_demo_run.py (nuevo), tests/test_demo_client.py, DECISIONS.md,
+readme.md.
+- Cliente: POST/DELETE /api/v3/order en la tabla cerrada, solo con
+  trading=True; parámetros cerrados (MARKET, ids bt-, decimales sin
+  exponente); compra solo por quoteOrderQty y venta solo por quantity,
+  mayores que 0; "Duplicate order sent." se marca sin guardar el texto.
+- DemoGateway: contrato de D030 (-2013 -> no existe; 4XX -> rechazo;
+  5XX/-1007/429/418/transporte -> desconocido; duplicado -> DuplicateOrder;
+  respuesta incompleta -> desconocido); errores fuera del except.
+- run: kill switch y reloj; resuelve pendientes solo por consulta; reconcilia;
+  exige velas cerradas hasta ayer; posición objetivo (target_intents); límites
+  por día de ejecución (check_limits(execution_day=...),
+  ledger.orders_recorded_on); sin los dos consentimientos solo simula; con
+  ellos, protocolo idempotente y reconciliación posterior.
+- Pruebas con exchange simulado coherente: simulación sin POST con cualquier
+  consentimiento incompleto; envío y repetición con 0 envíos; kill switch y
+  datos viejos bloquean antes de enviar; rechazo final sin reintento;
+  desconocido detiene y nunca reenvía. 705 passed.
+- Simulación REAL contra la cuenta demo (sin envío): "Orden:
+  bt-BTCUSDT-20260817-B BUY por 1000.00 USDT" (coincide con la señal de BTC
+  de paper). Aún no se ha enviado ninguna orden.

@@ -112,6 +112,10 @@ Fase experimental: valida la ejecución, no la rentabilidad. No envía
 3. Comprobación: `python -m bottrading.demo_client check`
 4. Línea base (pide escribir INICIALIZAR): `python -m bottrading.demo_client init`
 5. Reconciliación: `python -m bottrading.demo_client reconcile`
+6. Órdenes (F4, aprobación (b)): `python -m bottrading.demo_client run` solo
+   simula. Para enviar de verdad a la cuenta DEMO hacen falta las dos cosas:
+   `$env:BOTTRADING_DEMO_ORDERS = "1"` y `... run --send-orders`, y que la
+   clave tenga el permiso de trading activado en Binance Demo.
 
 El estado privado vive en `%USERPROFILE%\.bottrading\demo\`, fuera del
 repositorio. Crear el archivo `STOP` en esa carpeta activa el kill switch.

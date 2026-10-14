@@ -358,6 +358,11 @@ class OrderLedger:
         return [r.intent for r in self.records().values()
                 if r.intent.signal_time.date() == day]
 
+    def orders_recorded_on(self, day: date) -> list[OrderIntent]:
+        """Intenciones cuyo INTENT se anotó ese día (UTC): el día de EJECUCIÓN (F4)."""
+        return [_intent_from_row(row) for row in self._rows
+                if row[3] == "INTENT" and datetime.fromisoformat(row[1]).date() == day]
+
     def unresolved(self, symbol: str | None = None) -> list[OrderRecord]:
         """Órdenes no finales: bloquean nuevas órdenes de su símbolo (D030, punto 4)."""
         return [r for r in self.records().values()

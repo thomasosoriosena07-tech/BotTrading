@@ -531,7 +531,10 @@ Estado: Aprobada por el usuario ("sí, prepáralo", 2026-10-13).
 - Actualización diaria (velas cerradas), no en tiempo real.
 
 ## D030 — Integración futura con Binance Spot Demo Mode (T021)
-Estado: (a) lectura de la cuenta demo APROBADA por el usuario ("apruebo",
+Estado: (b) envío de órdenes MARKET a la cuenta DEMO APROBADO por el
+usuario ("avancemos de una vez con f4", 2026-10-13), dentro de los límites
+de este documento; producción sigue prohibida. Ver "F4" al final.
+Estado original: (a) lectura de la cuenta demo APROBADA por el usuario ("apruebo",
 2026-10-13, tras revisar el plan v3 y la revisión de Codex). (b) envío de
 órdenes demo NO aprobado: requiere una aprobación posterior y separada,
 antes de F4. Ninguna configuración, flag ni variable amplía este alcance.
@@ -813,6 +816,23 @@ Fases (T021)
   no rentabilidad.
 - F6: informe de ejecución frente a D014. Ninguna fase lleva a
   producción.
+
+F4 (aprobación (b), 2026-10-13):
+- POST y DELETE /api/v3/order entran en la tabla cerrada; solo un DemoClient
+  creado con trading=True puede prepararlos, y solo `run --send-orders` con
+  BOTTRADING_DEMO_ORDERS=1 lo crea. Solo MARKET; compra por quoteOrderQty
+  (céntimos, hacia abajo), venta por quantity (stepSize, hacia abajo).
+- Posición objetivo = estado de la estrategia congelada (última señal BUY o
+  SELL con velas cerradas hasta ayer). La intención usa la fecha de esa señal:
+  clientOrderId determinista; repetir envía 0. Al empezar, BTC estaba "dentro"
+  (señal 2026-08-17) y ETH y SOL "fuera": la primera orden es BUY de BTC.
+- Límites por día de EJECUCIÓN (cada activo puede alinearse con una señal de
+  otra fecha); las intenciones ya registradas no cuentan dos veces.
+- Clave: en lugar de una clave nueva, se activa el permiso de trading en la
+  clave demo existente (el secreto no cambia y la línea base sigue firmada).
+  Si Binance no lo permitiera, se haría la rotación prevista con nueva firma.
+- Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
+  evento): el comando se detiene con DETENIDO y no envía nada ese día.
 
 ## Pendientes de decisión
 - Ninguna abierta para el MVP.

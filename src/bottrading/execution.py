@@ -14,7 +14,7 @@ import re
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import date, datetime
 
 # Helpers internos del motor: reutilización provisional para garantizar la
 # paridad con D014 (revisión de Codex); antes de una API estable se expondrá
@@ -90,7 +90,8 @@ def decide(symbol: str, signal: Signal, signal_time: datetime, holding: Holding,
 
 
 def check_limits(intents: Sequence[OrderIntent], holdings: dict[str, Holding],
-                 already_today: Sequence[OrderIntent] = ()) -> None:
+                 already_today: Sequence[OrderIntent] = (), *,
+                 execution_day: date | None = None) -> None:
     """Lanza LimitExceeded si las intenciones nuevas no caben en los límites.
 
     `holdings` refleja solo ejecuciones confirmadas; `already_today` son las
@@ -98,12 +99,17 @@ def check_limits(intents: Sequence[OrderIntent], holdings: dict[str, Holding],
     estado. Los conteos son acumulados (revisión de Codex). Al superarse un
     límite no se reduce ninguna orden: no se envía nada ese día (D030).
 
+    Sin `execution_day`, todas las intenciones deben ser del mismo día de
+    señal. Con él (F4), el "día" es el de ejecución: cada activo puede
+    alinearse con una señal de otra fecha y los límites cuentan lo ejecutado
+    ese día (`already_today` lo aporta el registro por fecha de anotación).
+
     Conservador: una venta del mismo día NO libera exposición (no consta
     confirmada al decidir). Con 1000 por activo y 3 activos no hace falta.
     """
     every = [*already_today, *intents]
     days = {intent.signal_time.date() for intent in every}
-    if len(days) > 1:
+    if execution_day is None and len(days) > 1:
         raise LimitExceeded(f"intenciones de varios días: {sorted(days)}")
     unknown = sorted({i.symbol for i in every if i.symbol not in DEMO_SYMBOLS})
     if unknown:
@@ -202,3 +208,30 @@ def run_local(
             trades.append(trade)
         pending = decide(symbol, signals[index], candle.timestamp, holding, budget)
     return LocalRun(symbol, trades, holding, pending)
+
+
+def target_intents(candles_by_symbol: dict[str, Sequence[Candle]],
+                   holdings: dict[str, Holding], budget: float = BUDGET_PER_ASSET,
+                   signal_function: Callable[[Sequence[float]], list[Signal]]
+                   = FROZEN_CANDIDATE.signals) -> list[OrderIntent]:
+    """Intenciones para alinear la cuenta con la posición objetivo (F4, D030).
+
+    La posición objetivo es el estado de la estrategia congelada: la última
+    señal BUY o SELL (cruces calculados con velas cerradas). La intención usa
+    la fecha de ESA señal, así que su clientOrderId es determinista: repetir
+    la ejecución reproduce el mismo id y el protocolo envía 0. decide() solo
+    produce una orden si la posición real (reconciliada) difiere del objetivo.
+    """
+    intents = []
+    for symbol, candles in candles_by_symbol.items():
+        signals = signal_function([candle.close for candle in candles])
+        if len(signals) != len(candles):
+            raise ValueError("la función de señales debe devolver una señal por vela")
+        last = next((i for i in range(len(signals) - 1, -1, -1)
+                     if signals[i] is not Signal.HOLD), None)
+        if last is None:
+            continue
+        intent = decide(symbol, signals[last], candles[last].timestamp, holdings[symbol], budget)
+        if intent is not None:
+            intents.append(intent)
+    return intents
