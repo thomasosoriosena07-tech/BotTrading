@@ -67,10 +67,8 @@ holdout final, que se evalúa una sola vez (T017).
   F0 (documento D030), F1 (capa local) y F2a (cliente de lectura) hechos
   y revisados. F2b-1 y F2b-2 cerrados. F3: check, init (usuario) y
   reconciliación reales OK; estado privado movido a
-  %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 CERRADO
-  (guarda
-  de publicación) después de verificar la primera ejecución automática
-  de paper, porque modifica scripts/paper_daily.ps1. Lectura de
+  %USERPROFILE%\.bottrading\demo (guarda revisada y cerrada). F2b-3 (guarda de
+  publicación) CERRADO. Siguiente: F4 solo con la aprobación (b). Lectura de
   cuenta demo aprobada (a); envío de órdenes NO aprobado (b). Fases
   F1-F6 en D030; F1, F2a y F2b sin red. No altera T019 ni paper/.
 
