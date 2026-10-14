@@ -442,3 +442,45 @@ def test_only_main_grants_order_consent():
                                                                 fromlist=["x"]))
                                          if not n.startswith("_")}  # ya no es pública
     assert set(uses["_ISSUED_CONSENTS"]) == {"demo_client.py"}
+
+
+# --- F5: diario de ejecuciones e informe -----------------------------------------------
+
+
+def test_send_run_journals_ok_and_writes_the_private_report(world):
+    from bottrading.demo_report import read_runs
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0 and "Informe de ejecución:" in text
+    entries = read_runs(paths.runs)
+    assert [(e.outcome, e.orders) for e in entries] == [("ok", len(expected_intents(data)))]
+    report = paths.report.read_text(encoding="utf-8")
+    for intent in expected_intents(data):
+        assert intent.client_order_id in report
+    assert "Días seguidos sin incidencias: 1 de 30" in report
+    assert paths.report.parent == paths.ledger.parent  # privado, junto al registro
+
+
+def test_stopped_send_run_is_journaled_and_simulation_is_not(world):
+    from bottrading.demo_report import read_runs
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    assert run(world, "run")[0] == 0  # simulación: no se anota
+    assert read_runs(paths.runs) == []
+    paths.kill_switch.write_text("", encoding="utf-8")
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 1
+    entries = read_runs(paths.runs)
+    assert [e.outcome for e in entries] == ["detenido"] and "kill switch" in entries[0].detail
+
+
+def test_report_command_is_read_only_and_works_with_kill_switch(world):
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    posts = len(exchange.posts())
+    paths.kill_switch.write_text("", encoding="utf-8")
+    code, text = run(world, "report")
+    assert code == 0 and "Órdenes ejecutadas:" in text
+    assert len(exchange.posts()) == posts

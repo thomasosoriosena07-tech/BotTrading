@@ -865,7 +865,16 @@ quiero que automaticemos el bot lo mas rapido"):
   se mide el desfase con /api/v3/time al empezar y se firma con la hora del
   SERVIDOR (lo que recomienda Binance); la fecha del día también sale de esa
   hora corregida. Se detiene si el desfase es de 30 s o más (reloj roto).
-- Pendiente de F5: informe de ejecución (precio previsto frente a ejecutado,
+- Informe de ejecución (2026-10-14): demo_report.py calcula por orden el
+  precio medio real frente a la apertura del día y frente al precio modelado
+  (apertura ± 0,05 %), en puntos básicos; la comisión real en % (en BNB se
+  indica sin convertir); y el retraso desde las 00:00 UTC. runs.csv (privado)
+  anota cada run con envío (ok/detenido y motivo) y da la racha de días
+  seguidos sin incidencias (un día cuenta si hubo ejecución y ninguna se
+  detuvo; el kill switch también corta la racha, de forma conservadora).
+  execution_report.md es PRIVADO, junto al registro; no se publica. Comando
+  `report` de solo lectura (funciona aunque esté el kill switch).
+- Pendiente de F5 (resto): 30 días seguidos sin incidencias;
   comisión, retraso, rechazos) y criterio de 30 días sin discrepancias.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
   evento): el comando se detiene con DETENIDO y no envía nada ese día.

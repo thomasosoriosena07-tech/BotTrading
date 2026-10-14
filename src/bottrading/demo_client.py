@@ -56,6 +56,7 @@ from bottrading.demo_ledger import (
     default_ledger_path,
     execute_intent,
 )
+from bottrading.demo_report import append_run, collect_fills, read_runs, render_report
 from bottrading.demo_reconcile import (
     load_baseline,
     reconcile,
@@ -656,13 +657,24 @@ class DemoPaths:
         ledger = default_ledger_path()
         return cls(ledger, ledger.with_name("baseline.json"), ledger.with_name("STOP"))
 
+    @property
+    def runs(self) -> Path:
+        """Diario privado de ejecuciones de run con envío (F5)."""
+        return self.ledger.with_name("runs.csv")
+
+    @property
+    def report(self) -> Path:
+        """Informe privado de ejecución (F5); no se publica."""
+        return self.ledger.with_name("execution_report.md")
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m bottrading.demo_client",
         description="Cuenta Binance Spot DEMO (D030). Solo envía órdenes con run, "
                     f"--send-orders y {ORDERS_ENV}=1.")
-    parser.add_argument("command", choices=("check", "init", "reconcile", "run", "rekey"))
+    parser.add_argument("command",
+                        choices=("check", "init", "reconcile", "run", "rekey", "report"))
     parser.add_argument("--send-orders", action="store_true",
                         help="run: envía de verdad (exige también la variable de entorno)")
     return parser
@@ -694,13 +706,15 @@ def main(argv: Sequence[str] | None = None, *,
     try:
         paths = paths or DemoPaths.default()
         client = DemoClient(credentials, transport, clock, consent=consent)
-        if command != "check":
+        if command not in ("check", "report"):  # diagnóstico y lectura: sin kill switch
             _assert_no_kill_switch(paths)
         clock = _server_clock(client, clock, out)
         client = DemoClient(credentials, transport, clock, consent=consent)
         if command == "run":
             return _run(client, credentials, clock, paths, out, send,
                         data_dir or REPO_ROOT / "data", sleep)
+        if command == "report":
+            return _report(client, credentials, clock, paths, out, data_dir or REPO_ROOT / "data")
         if command == "rekey":
             reader = new_credentials or (lambda: read_windows_credential(NEW_CREDENTIAL_TARGET))
             return _rekey(credentials, reader, transport, clock, paths, ask, out)
@@ -711,7 +725,53 @@ def main(argv: Sequence[str] | None = None, *,
     except (OSError, ValueError, KeyError) as error:  # E/S o archivos privados ilegibles
         failure = f"{type(error).__name__}: {error}"
     out(f"DETENIDO: {failure}")
+    if command == "run" and send and paths is not None:
+        _journal(paths, clock, "detenido", 0, failure, out)
     return 1
+
+
+def _journal(paths, clock, outcome, orders, detail, out) -> None:
+    """Anota la ejecución en el diario privado (F5); un fallo aquí no oculta el resultado."""
+    now = datetime.fromtimestamp(clock(), timezone.utc)
+    problem = None
+    try:
+        append_run(paths.runs, now.date(), now, outcome, orders, detail)
+    except OSError as error:
+        problem = f"{type(error).__name__}"
+    if problem:
+        out(f"AVISO: no se pudo anotar la ejecución en {paths.runs.name} ({problem})")
+
+
+def _write_report(paths, records, recon, candles, infos, today, out) -> None:
+    fills = collect_fills(records, recon.orders, recon.trades, candles,
+                          {s: info.base_asset for s, info in infos.items()})
+    runs = read_runs(paths.runs)
+    paths.report.write_text(render_report(fills, records, runs, today), encoding="utf-8")
+    pending = sum(1 for f in fills if f.open_price is None)
+    out(f"Informe de ejecución: {len(fills)} órdenes ejecutadas ({pending} con la vela del día "
+        f"pendiente); guardado en {paths.report}")
+
+
+def _load_candles(data_dir) -> dict:
+    return {symbol: load_forward_candles(data_dir / f"{symbol}-1d",
+                                         data_dir / f"{symbol}-1d-daily")[0]
+            for symbol in DEMO_SYMBOLS}
+
+
+def _report(client, credentials, clock, paths, out, data_dir) -> int:
+    """Genera el informe de ejecución (solo lectura; no exige datos de ayer)."""
+    baseline = load_baseline(paths.baseline, credentials().secret)
+    today = datetime.fromtimestamp(clock(), timezone.utc).date()
+    infos = {s: symbol_info(client.exchange_info(s), s) for s in DEMO_SYMBOLS}
+    with OrderLedger(paths.ledger) as ledger:
+        records = ledger.records()
+        recon = reconcile(client, ledger, baseline)
+    _write_report(paths, records, recon, _load_candles(data_dir), infos, today, out)
+    print_summary = [line for line in paths.report.read_text(encoding="utf-8").splitlines()
+                     if line.startswith("- ")][:3]
+    for line in print_summary:
+        out(line)
+    return 0
 
 
 def _server_clock(client, clock, out) -> Callable[[], float]:
@@ -835,7 +895,8 @@ def _run(client, credentials, clock, paths, out, send, data_dir, sleep) -> int:
     baseline = load_baseline(paths.baseline, credentials().secret)
     today = datetime.fromtimestamp(clock(), timezone.utc).date()
     with OrderLedger(paths.ledger) as ledger:
-        steps = {s: symbol_info(client.exchange_info(s), s).step_size for s in DEMO_SYMBOLS}
+        infos = {s: symbol_info(client.exchange_info(s), s) for s in DEMO_SYMBOLS}
+        steps = {s: info.step_size for s, info in infos.items()}
         gateway = DemoGateway(client, steps)
         pending = ledger.unresolved()
         if pending and not send:
@@ -870,10 +931,13 @@ def _run(client, credentials, clock, paths, out, send, data_dir, sleep) -> int:
             out(f"  {intent.client_order_id}: {record.state} {record.status} "
                 f"ejecutado {record.executed_qty}")
         after = reconcile(client, ledger, baseline)
+        records = ledger.records()
     out("Reconciliación posterior: OK")
     for symbol, holding in sorted(after.holdings.items()):
         out(f"  {symbol}: efectivo {holding.cash:.2f} USDT, cantidad {holding.quantity}, "
             f"coste {holding.cost:.2f}")
+    _journal(paths, clock, "ok", len(intents), "sin incidencias", out)
+    _write_report(paths, records, after, candles, infos, today, out)
     return 0
 
 

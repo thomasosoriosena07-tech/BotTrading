@@ -23,7 +23,7 @@ import json
 import os
 import weakref
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -245,6 +245,9 @@ class Reconciliation:
     holdings: dict[str, Holding]
     coverage: CoverageProof
     balances: dict[str, Decimal]
+    # Historial ya validado (F5: informe de ejecución): órdenes y fills por símbolo.
+    orders: dict[str, list] = field(default_factory=dict)
+    trades: dict[str, list] = field(default_factory=dict)
 
 
 def reconcile_data(baseline: Baseline, infos: Mapping[str, SymbolInfo],
@@ -295,7 +298,7 @@ def reconcile_data(baseline: Baseline, infos: Mapping[str, SymbolInfo],
     if problems:
         raise StopTheDay("reconciliación con discrepancias de saldo: " + "; ".join(problems))
     return Reconciliation(holdings, issue_coverage_proof(frozenset(DEMO_SYMBOLS), baseline.since),
-                          actual)
+                          actual, orders, trades)
 
 
 def _check_orders(symbol: str, orders: Sequence[Mapping], trades: Sequence[Mapping],

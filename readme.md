@@ -119,6 +119,9 @@ Fase experimental: valida la ejecución, no la rentabilidad. No envía
 7. Automático (F5): la tarea diaria ejecuta `scripts/daily.ps1`: paper y, solo
    si paper termina bien, `scripts/demo_daily.ps1`. Para pararlo, crea el archivo `STOP` en
    `%USERPROFILE%\.bottrading\demo\`. Log en `reports/automation/demo_<fecha>.log`.
+8. Informe de ejecución (F5): `python -m bottrading.demo_client report` genera
+   `execution_report.md` (privado) con precio real frente al modelo, comisión,
+   retraso y la racha de días sin incidencias; `run` con envío lo actualiza.
 
 El estado privado vive en `%USERPROFILE%\.bottrading\demo\`, fuera del
 repositorio. Crear el archivo `STOP` en esa carpeta activa el kill switch.
@@ -144,6 +147,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `demo_ledger.py` | Registro privado de órdenes demo y protocolo idempotente (sin envío real) |
 | `demo_reconcile.py` | Línea base y reconciliación de la cuenta demo (solo lectura) |
 | `publication.py` | Valida el contenido que la tarea diaria publica (lista cerrada) |
+| `demo_report.py` | Informe privado de ejecución demo frente al modelo (F5) |
 | `strategy.py` | Señales de cruce de medias y referencia buy-and-hold |
 | `backtest.py` | Motor: ejecución en la apertura siguiente, costes, curva de capital |
 | `metrics.py` | Retorno, drawdown, volatilidad, Sharpe, operaciones |

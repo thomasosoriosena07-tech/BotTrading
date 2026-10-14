@@ -1003,3 +1003,24 @@ Archivos: scripts/demo_daily.ps1 (nuevo, ASCII), DECISIONS.md, readme.md.
   de datos viejos se mantiene y el filtro del log. Observación menor: el
   código se detiene con abs(desfase) >= 30 s; alineada la redacción de D030 y
   de este registro (30 s o más). 716 passed; test_daily_chain 35/35.
+
+## Registro T021 F5: informe de ejecución (Claude Code, 2026-10-14)
+Pedido por el usuario ("preparalo"). Archivos: src/bottrading/demo_report.py
+(nuevo, sin red), demo_client.py (comando report, diario de run, informe al
+final de run con envío), demo_reconcile.py (Reconciliation expone el historial
+validado), tests/test_demo_report.py (nuevo), tests/test_demo_run.py,
+DECISIONS.md, readme.md.
+- Métricas por orden: precio medio real; apertura del día de ejecución;
+  precio modelado (apertura ± 0,05 %); coste frente a apertura y modelo en
+  pb (positivo = peor); comisión real en % (base o USDT; BNB sin convertir);
+  retraso desde 00:00 UTC. Si falta la vela del día: "vela pendiente".
+- runs.csv privado (solo de añadir) con cada run con envío: ok/detenido,
+  órdenes y motivo; la simulación no se anota. Racha de días seguidos sin
+  incidencias para el criterio de 30 días.
+- Pruebas: 7 unitarias (primera orden real, signo de la venta, comisión en
+  USDT/base/BNB, vela pendiente, racha, diario, render) y 3 de integración
+  (ok + informe; detenido anotado y simulación no; report de solo lectura con
+  kill switch). 726 passed.
+- report real: 1 orden ejecutada (bt-BTCUSDT-20260817-B, precio medio
+  83800, comisión 0,100 %, retraso 3,9 h, apertura del 14 pendiente hasta
+  descargar su vela); racha 0 de 30 (el diario empieza hoy).
