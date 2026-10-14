@@ -145,7 +145,7 @@ Paquete `src/bottrading/`, un módulo por responsabilidad:
 | `paper.py` | Paper trading con diario solo de añadir |
 | `dashboard.py` | Panel HTML del paper trading |
 | `execution.py` | Intención de orden, límites de D030 y ejecutor local (sin red) |
-| `demo_client.py` | Cliente de solo lectura para Binance Spot Demo (D030; aún sin uso real) |
+| `demo_client.py` | Cliente de Binance Spot Demo (D030): lectura, y órdenes MARKET demo solo con doble consentimiento |
 | `demo_ledger.py` | Registro privado de órdenes demo y protocolo idempotente (sin envío real) |
 | `demo_reconcile.py` | Línea base y reconciliación de la cuenta demo (solo lectura) |
 | `publication.py` | Valida el contenido que la tarea diaria publica (lista cerrada) |
