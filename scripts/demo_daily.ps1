@@ -12,8 +12,14 @@
 function Hide-Secrets([string]$Line) {
     # Barrera propia del log (revision de Codex): la CLI ya oculta claves, pero
     # si una excepcion inesperada las mostrara, aqui se tapan igualmente.
-    $Line = $Line -replace '(?<![A-Za-z0-9])[A-Za-z0-9]{64}(?![A-Za-z0-9])', '[oculto]'
-    $Line = $Line -replace 'signature=[^&\s]*', 'signature=[oculto]'
+    # Credenciales admitidas: 16 a 128 alfanumericos (revision de Codex). Se tapa
+    # toda secuencia alfanumerica de 32 o mas, y las de 16 a 31 que mezclan
+    # letras y digitos (como una clave aleatoria). IDs bt-..., fechas y decimales
+    # tienen separadores y no se ven afectados.
+    $Line = $Line -replace '(?<![A-Za-z0-9])[A-Za-z0-9]{32,}(?![A-Za-z0-9])', '[oculto]'
+    $Line = $Line -replace ('(?<![A-Za-z0-9])(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*[0-9])' +
+                            '[A-Za-z0-9]{16,31}(?![A-Za-z0-9])'), '[oculto]'
+    $Line = $Line -replace '(?i)signature=[^&\s]*', 'signature=[oculto]'
     return ($Line -replace '(?i)X-MBX-APIKEY\S*\s*\S*', 'X-MBX-APIKEY [oculto]')
 }
 

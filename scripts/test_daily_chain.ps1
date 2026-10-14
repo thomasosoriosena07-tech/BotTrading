@@ -39,6 +39,24 @@ Check "D oculta claves de 64 caracteres" ($hidden -notlike "*$key*")
 Check "D oculta la firma" ($hidden -notlike "*abc123def*")
 Check "D deja el texto normal" ((Hide-Secrets "Sin ordenes: la cuenta ya coincide") -eq "Sin ordenes: la cuenta ya coincide")
 
+# E (revision de Codex): todas las longitudes de credencial admitidas (16-128).
+$chars = "aB3dE5gH7jK9mN1pQ2rS4tU6vW8xY0zC"
+foreach ($n in 16, 17, 31, 32, 63, 64, 100, 128) {
+    $token = ($chars * 5).Substring(0, $n)
+    $masked = Hide-Secrets "fallo inesperado con $token al firmar"
+    Check "E oculta una credencial de $n caracteres" ($masked -notlike "*$token*")
+}
+Check "E oculta SIGNATURE en mayusculas" ((Hide-Secrets "x?A=1&SIGNATURE=deadbeef") -notlike "*deadbeef*")
+# Lineas reales del log que no deben cambiar.
+foreach ($line in @(
+        "  bt-BTCUSDT-20260817-B: FINAL FILLED ejecutado 0.01193",
+        "  BTCUSDT: efectivo 0.27 USDT, cantidad 0.01191807, coste 999.73",
+        "2026-10-13T23:07:42 inicio",
+        "Hora: desfase con el servidor 183 ms",
+        "Orden: bt-SOLUSDT-20261012-S SELL 84.532 SOLUSDT")) {
+    Check "E no altera: $($line.Trim().Substring(0, 20))" ((Hide-Secrets $line) -eq $line)
+}
+
 Set-Location $env:TEMP
 Remove-Item -Recurse -Force $root
 $results

@@ -967,3 +967,11 @@ Archivos: scripts/demo_daily.ps1 (nuevo, ASCII), DECISIONS.md, readme.md.
   scripts/test_daily_chain.ps1: 8/8 (paper falla -> demo no corre; paper OK
   -> demo corre; filtro). Tarea real lanzada a las 23:07: paper 0, demo 0
   ("Sin órdenes"), resultado 0. Próxima ejecución 2026-10-14 08:00.
+- Revisión de Codex de 5dc7c51 (transmitida por el usuario): cadena, retirada
+  del consentimiento y kill switch confirmados; el filtro del log solo cubría
+  tokens de 64 caracteres. Corregido: se tapa toda secuencia alfanumérica de
+  32 o más y las de 16 a 31 que mezclan letras y dígitos (credenciales
+  admitidas: 16-128); signature= con (?i) explícito (el -replace de PowerShell
+  ya no distinguía mayúsculas). Pruebas test_daily_chain.ps1: 22/22, con
+  longitudes 16, 17, 31, 32, 63, 64, 100 y 128, SIGNATURE en mayúsculas y
+  líneas reales del log que no deben cambiar.
