@@ -484,3 +484,43 @@ def test_report_command_is_read_only_and_works_with_kill_switch(world):
     code, text = run(world, "report")
     assert code == 0 and "Órdenes ejecutadas:" in text
     assert len(exchange.posts()) == posts
+
+
+# --- revisión de Codex de b312314 -------------------------------------------------------
+
+
+def test_rejections_are_incidents_and_journal_counts_real_posts(world):
+    from bottrading.demo_report import clean_streak, read_runs
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    exchange.fail_post = (400, {"code": -2010, "msg": "Account has insufficient balance."})
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0 and "INCIDENCIA" in text
+    planned = len(expected_intents(data))
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})  # mismo id: no reenvía
+    assert "INCIDENCIA" in text  # la cuenta sigue desalineada
+    entries = read_runs(paths.runs)
+    assert [(e.outcome, e.orders) for e in entries] == [("incidencia", planned),
+                                                        ("incidencia", 0)]
+    assert clean_streak(entries, TODAY.date()) == 0
+
+
+def test_successful_rerun_journals_zero_posts(world):
+    from bottrading.demo_report import read_runs
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert [(e.outcome, e.orders) for e in read_runs(paths.runs)] == [
+        ("ok", len(expected_intents(data))), ("ok", 0)]
+
+
+def test_broken_journal_does_not_turn_a_good_run_into_a_stop(world):
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    paths.runs.write_text("cabecera,rota\n", encoding="utf-8")
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0 and "Reconciliación posterior: OK" in text
+    assert "AVISO: no se pudo actualizar el informe" in text and "DETENIDO" not in text
+    code, text = run(world, "report")  # el informe sí falla de forma visible
+    assert code == 1 and "AVISO" in text

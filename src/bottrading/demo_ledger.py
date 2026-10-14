@@ -358,6 +358,10 @@ class OrderLedger:
         return [r.intent for r in self.records().values()
                 if r.intent.signal_time.date() == day]
 
+    def sent_count(self, client_order_id: str) -> int:
+        """Eventos SENT de una orden: cuántos envíos reales se intentaron (F5)."""
+        return sum(1 for row in self._rows if row[2] == client_order_id and row[3] == "SENT")
+
     def orders_recorded_on(self, day: date) -> list[OrderIntent]:
         """Intenciones cuyo INTENT se anotó ese día (UTC): el día de EJECUCIÓN (F4)."""
         return [_intent_from_row(row) for row in self._rows

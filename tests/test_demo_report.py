@@ -62,7 +62,9 @@ def test_sell_slippage_sign_and_fee_in_usdt():
 def test_bnb_fee_pending_candle_and_missing_time():
     m = fill_metrics(RECORD, ORDER, [trade("0.01193", "999.73", fee="0.001", asset="BNB",
                                            time=None)], OPENS, "BTC")
-    assert m.fee_rate is None and m.fee_asset == "BNB"
+    assert m.fee_rate is None and m.fee_asset == "BNB" and m.fee_amount == Decimal("0.001")
+    text = render_report([m], {BUY.client_order_id: RECORD}, [], date(2026, 10, 14))
+    assert "0.001 BNB (sin convertir)" in text  # revisión de Codex: importe visible
     assert m.executed_at is None and m.delay_hours is None and m.open_price is None
     later = fill_metrics(RECORD, ORDER, [trade("0.01193", "999.73")], {}, "BTC")
     assert later.open_price is None and later.vs_open_bps is None and later.modeled_price is None

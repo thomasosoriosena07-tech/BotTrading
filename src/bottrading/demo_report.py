@@ -45,6 +45,7 @@ class FillMetrics:
     open_price: Decimal | None  # apertura del día de ejecución (None: vela pendiente)
     fee_rate: Decimal | None  # comisión / nominal (None: cobrada en otro activo)
     fee_asset: str
+    fee_amount: Decimal = Decimal(0)  # importe cobrado en fee_asset (revisión de Codex)
 
     @property
     def modeled_price(self) -> Decimal | None:
@@ -98,7 +99,8 @@ def fill_metrics(record: OrderRecord, order: Mapping, trades: Sequence[Mapping],
     return FillMetrics(record.intent.client_order_id, record.intent.symbol,
                        order.get("side", record.intent.side.value.upper()),
                        record.intent.signal_time.date(), executed_at, quantity, quote,
-                       average, opens.get(day) if day else None, fee_rate, fee_asset or "?")
+                       average, opens.get(day) if day else None, fee_rate, fee_asset or "?",
+                       fee)
 
 
 def collect_fills(records: Mapping[str, OrderRecord], orders: Mapping[str, Sequence[Mapping]],
@@ -126,7 +128,7 @@ def collect_fills(records: Mapping[str, OrderRecord], orders: Mapping[str, Seque
 class RunEntry:
     day: date
     at: str
-    outcome: str  # "ok" o "detenido"
+    outcome: str  # "ok", "incidencia" (rechazo o sin resolver) o "detenido"
     orders: int
     detail: str
 
@@ -206,7 +208,7 @@ def render_report(fills: Sequence[FillMetrics], records: Mapping[str, OrderRecor
     ]
     for f in fills:
         fee = (_fmt(f.fee_rate * 100, 3, " %") if f.fee_rate is not None
-               else f"en {f.fee_asset}")
+               else f"{f.fee_amount.normalize():f} {f.fee_asset} (sin convertir)")
         lines.append(
             f"| {f.client_order_id} | {f.side} | "
             f"{f.executed_at.strftime('%Y-%m-%d %H:%M') if f.executed_at else 'n/d'} | "

@@ -1024,3 +1024,12 @@ DECISIONS.md, readme.md.
 - report real: 1 orden ejecutada (bt-BTCUSDT-20260817-B, precio medio
   83800, comisión 0,100 %, retraso 3,9 h, apertura del 14 pendiente hasta
   descargar su vela); racha 0 de 30 (el diario empieza hoy).
+- Revisión de Codex de b312314 (transmitida por el usuario): requiere
+  cambios. Corregido: (ALTA) un rechazo, nuevo o persistente, o una orden
+  sin estado final anota el día como "incidencia" y corta la racha; el
+  diario registra los envíos reales (eventos SENT de la ejecución), no las
+  intenciones; (MEDIA) la comisión en BNB muestra su importe sin convertir;
+  (MEDIA) un fallo al leer el diario o escribir el informe se avisa y no
+  convierte un run correcto en DETENIDO (report sí devuelve 1). Pruebas:
+  rechazo -> incidencia con 1 envío y repetición con 0; repetición correcta
+  con 0 envíos; diario dañado. 729 passed.

@@ -742,14 +742,25 @@ def _journal(paths, clock, outcome, orders, detail, out) -> None:
         out(f"AVISO: no se pudo anotar la ejecución en {paths.runs.name} ({problem})")
 
 
-def _write_report(paths, records, recon, candles, infos, today, out) -> None:
+def _write_report(paths, records, recon, candles, infos, today, out) -> bool:
+    """Escribe el informe privado. Un fallo del diario o del informe se avisa
+    pero no cambia el resultado de run (revisión de Codex); devuelve si se escribió."""
     fills = collect_fills(records, recon.orders, recon.trades, candles,
                           {s: info.base_asset for s, info in infos.items()})
-    runs = read_runs(paths.runs)
-    paths.report.write_text(render_report(fills, records, runs, today), encoding="utf-8")
+    problem = None
+    try:
+        runs = read_runs(paths.runs)
+        paths.report.write_text(render_report(fills, records, runs, today), encoding="utf-8")
+    except (OSError, ValueError) as error:
+        problem = type(error).__name__
+    if problem:
+        out(f"AVISO: no se pudo actualizar el informe de ejecución ({problem}); "
+            "el resultado de run no cambia")
+        return False
     pending = sum(1 for f in fills if f.open_price is None)
     out(f"Informe de ejecución: {len(fills)} órdenes ejecutadas ({pending} con la vela del día "
         f"pendiente); guardado en {paths.report}")
+    return True
 
 
 def _load_candles(data_dir) -> dict:
@@ -766,10 +777,11 @@ def _report(client, credentials, clock, paths, out, data_dir) -> int:
     with OrderLedger(paths.ledger) as ledger:
         records = ledger.records()
         recon = reconcile(client, ledger, baseline)
-    _write_report(paths, records, recon, _load_candles(data_dir), infos, today, out)
-    print_summary = [line for line in paths.report.read_text(encoding="utf-8").splitlines()
-                     if line.startswith("- ")][:3]
-    for line in print_summary:
+    if not _write_report(paths, records, recon, _load_candles(data_dir), infos, today, out):
+        return 1
+    summary = [line for line in paths.report.read_text(encoding="utf-8").splitlines()
+               if line.startswith("- ")][:3]
+    for line in summary:
         out(line)
     return 0
 
@@ -926,17 +938,29 @@ def _run(client, credentials, clock, paths, out, send, data_dir, sleep) -> int:
             out("Sin órdenes: la cuenta ya coincide con la posición objetivo")
         if not send:
             return 0
+        sent_before = {i.client_order_id: ledger.sent_count(i.client_order_id) for i in intents}
+        incidents = []
         for intent in intents:
             record = execute_intent(ledger, gateway, intent, sleep)
             out(f"  {intent.client_order_id}: {record.state} {record.status} "
                 f"ejecutado {record.executed_qty}")
+            # Revisión de Codex: un rechazo (nuevo o de antes) o una orden sin
+            # estado final deja la cuenta desalineada: es una incidencia del día.
+            if record.status == "REJECTED" or not record.final:
+                incidents.append(f"{intent.client_order_id} {record.status or record.state}")
+        posts = sum(ledger.sent_count(i.client_order_id) - sent_before[i.client_order_id]
+                    for i in intents)
         after = reconcile(client, ledger, baseline)
         records = ledger.records()
     out("Reconciliación posterior: OK")
     for symbol, holding in sorted(after.holdings.items()):
         out(f"  {symbol}: efectivo {holding.cash:.2f} USDT, cantidad {holding.quantity}, "
             f"coste {holding.cost:.2f}")
-    _journal(paths, clock, "ok", len(intents), "sin incidencias", out)
+    outcome = "incidencia" if incidents else "ok"
+    _journal(paths, clock, outcome, posts,
+             "; ".join(incidents) if incidents else "sin incidencias", out)
+    if incidents:
+        out(f"INCIDENCIA: {'; '.join(incidents)} (la cuenta no quedó alineada)")
     _write_report(paths, records, after, candles, infos, today, out)
     return 0
 

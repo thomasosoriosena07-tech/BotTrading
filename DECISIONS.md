@@ -868,10 +868,13 @@ quiero que automaticemos el bot lo mas rapido"):
 - Informe de ejecución (2026-10-14): demo_report.py calcula por orden el
   precio medio real frente a la apertura del día y frente al precio modelado
   (apertura ± 0,05 %), en puntos básicos; la comisión real en % (en BNB se
-  indica sin convertir); y el retraso desde las 00:00 UTC. runs.csv (privado)
-  anota cada run con envío (ok/detenido y motivo) y da la racha de días
-  seguidos sin incidencias (un día cuenta si hubo ejecución y ninguna se
-  detuvo; el kill switch también corta la racha, de forma conservadora).
+  indica con su importe, sin convertir); y el retraso desde las 00:00 UTC.
+  runs.csv (privado) anota cada run con envío: ok, incidencia o detenido,
+  los envíos reales (eventos SENT de esa ejecución) y el motivo. Es
+  INCIDENCIA (revisión de Codex) que alguna orden objetivo quede REJECTED
+  (nueva o de antes: la cuenta sigue desalineada) o sin estado final. Un día
+  cuenta para la racha de 30 si hubo ejecución y todas fueron ok; detenido
+  (también por el kill switch) o incidencia la cortan.
   execution_report.md es PRIVADO, junto al registro; no se publica. Comando
   `report` de solo lectura (funciona aunque esté el kill switch).
 - Pendiente de F5 (resto): 30 días seguidos sin incidencias;
