@@ -308,6 +308,15 @@ def accounting_problems(result: BacktestResult, candles: Sequence[Candle]) -> li
         trade = by_time.get(candle.timestamp)
         when = candle.timestamp.isoformat()
         if trade is not None:
+            if trade.side not in (Signal.BUY, Signal.SELL):
+                problems.append(f"{when}: operación con lado {trade.side.value} (solo BUY o SELL)")
+            # La señal es la de la vela anterior del tramo; la de la primera vela
+            # (posición heredada, D020) es anterior al tramo. Su procedencia exacta
+            # en el historial previo la comprueba el evaluador (prueba causal).
+            if i and trade.signal_time != candles[i - 1].timestamp:
+                problems.append(f"{when}: la señal no es la de la vela anterior")
+            if not i and not trade.signal_time < candle.timestamp:
+                problems.append(f"{when}: la señal heredada no es anterior al tramo")
             problems += _trade_problems(trade, cash, config.commission_rate, config.slippage_rate)
             if trade.reference_price != candle.open:
                 problems.append(f"{when}: el precio de referencia no es la apertura de la vela")

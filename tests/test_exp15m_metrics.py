@@ -334,6 +334,30 @@ def test_accounting_rejects_any_negative_cash_and_trades_outside_the_segment():
     assert any("fuera de las velas" in p for p in accounting_problems(outside, history))
 
 
+def test_accounting_rejects_a_trade_whose_side_is_not_buy_or_sell():
+    # Revisión de Codex: un SELL reclasificado como HOLD con sus importes pasaba.
+    history, result = sample()
+    held = replace(result, trades=[result.trades[0], replace(result.trades[1], side=Signal.HOLD),
+                                   *result.trades[2:]])
+    assert any("solo BUY o SELL" in p for p in accounting_problems(held, history))
+
+
+def test_accounting_checks_where_each_signal_comes_from():
+    history, result = sample()
+    late = replace(result, trades=[result.trades[0],
+                                   replace(result.trades[1],
+                                           signal_time=result.trades[1].execution_time
+                                           + timedelta(days=10)),
+                                   *result.trades[2:]])
+    assert any("vela anterior" in p for p in accounting_problems(late, history))
+    inherited = run_backtest(history, [H] * 6, CONFIG, initial_signal=B,
+                             initial_signal_time=T0 - STEP)
+    assert accounting_problems(inherited, history) == []
+    future = replace(inherited, trades=[replace(inherited.trades[0],
+                                                signal_time=T0 + timedelta(days=10))])
+    assert any("heredada" in p for p in accounting_problems(future, history))
+
+
 @pytest.mark.parametrize("commission,slippage", [(0.0, 0.0), (0.00075, 0.0002), (0.002, 0.001)])
 def test_accounting_is_clean_in_every_cost_scenario(commission, slippage):
     config = BacktestConfig(initial_capital=10_000.0, commission_rate=commission,

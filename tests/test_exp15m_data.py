@@ -247,6 +247,9 @@ def _imports(path: Path) -> list[str]:
             # que se prohíben en el paquete (todas son absolutas).
             assert node.level == 0, f"{path.name}: importación relativa"
             names.append(node.module or "")
+            # "from bottrading import demo_client" importa un módulo por su nombre.
+            if node.module == "bottrading":
+                names += [f"bottrading.{alias.name}" for alias in node.names]
     return names
 
 
