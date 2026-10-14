@@ -91,7 +91,7 @@ def test_selection_rejects_missing_quarters():
         select(rows)
 
 
-def test_cached_signals_equal_direct_computation_on_every_prefix():
+def test_cached_signals_equal_direct_computation_at_sample_cuts():
     closes = [100 + math.sin(i / 7) * 5 + i * 0.01 for i in range(400)]
     signals = cached_signals(closes, (48, 24), check_points=[100, 250, 400])
     for cut in (1, 49, 100, 333, 400):
@@ -170,6 +170,45 @@ def test_validation_refuses_holdout_data(small_protocol):
     daily = synthetic(datetime(2026, 9, 1, tzinfo=UTC), 30, step=timedelta(days=1))
     with pytest.raises(DataValidationError, match="2026-10-01"):
         run_validation(late, daily, frozenset())
+
+
+@pytest.mark.parametrize("late", ["data", "daily"])
+def test_cli_rejects_holdout_months_before_reading_any_file(tmp_path, monkeypatch, capsys, late):
+    # Revisión de Codex de I3: los ZIP desde 2026-10 se rechazan por su nombre, sin
+    # abrirlos, calcular su hash ni pasarlos al cargador.
+    data, daily = tmp_path / "data", tmp_path / "daily"
+    data.mkdir(), daily.mkdir()
+    (data / "BTCUSDT-15m-2026-09.zip").write_bytes(b"x")
+    (daily / "BTCUSDT-1d-2026-09.zip").write_bytes(b"x")
+    folder = data if late == "data" else daily
+    interval = "15m" if late == "data" else "1d"
+    (folder / f"BTCUSDT-{interval}-2026-10.zip").write_bytes(b"x")
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("no debe leerse ningún archivo")
+    for name in ("load_15m", "load_binance_klines", "check_manifest", "build_manifest"):
+        monkeypatch.setattr(exp15m_eval, name, must_not_run)
+    code = exp15m_eval.main(["validate", "--data", str(data), "--daily", str(daily),
+                             "--out", str(tmp_path / "out")])
+    assert code == 2
+    assert "2026-10 o posterior" in capsys.readouterr().err
+
+
+def test_reject_holdout_files_by_name():
+    from pathlib import Path
+    exp15m_eval.reject_holdout_files([Path("BTCUSDT-15m-2026-09.zip"), Path("BTCUSDT-1d-2020-01.zip")])
+    for bad in ("BTCUSDT-15m-2026-10.zip", "BTCUSDT-15m-2027-01.zip", "BTCUSDT-15m.zip"):
+        with pytest.raises(DataValidationError):
+            exp15m_eval.reject_holdout_files([Path(bad)])
+
+
+def test_cached_signals_equal_direct_computation_on_all_prefixes():
+    # Revisión de Codex de I3 (P3): comprobación exhaustiva, en cada prefijo posible.
+    closes = [100 + math.sin(i / 7) * 5 + math.sin(i / 2) + i * 0.01 for i in range(300)]
+    for config in CONFIGS:
+        signals = cached_signals(closes, config, check_points=[300])
+        for cut in range(len(closes) + 1):
+            assert signals(closes[:cut]) == donchian_signals(closes[:cut], *config)
 
 
 def test_cli_without_data_fails_cleanly(tmp_path, capsys):

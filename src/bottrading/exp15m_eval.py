@@ -22,6 +22,7 @@ import argparse
 import csv
 import hashlib
 import io
+import re
 import statistics
 import sys
 from collections.abc import Callable, Sequence
@@ -68,6 +69,7 @@ CAPITAL = 10_000.0
 BASE = "base"
 CONFIGS = ((48, 24), (48, 48), (96, 24), (96, 48))  # entry × exit (A.6), orden fijo
 HOLDOUT_START = datetime(2026, 10, 1, tzinfo=UTC)  # separación + holdout: nunca se leen aquí
+MONTH_IN_NAME = re.compile(r"-(?P<year>[0-9]{4})-(?P<month>[0-9]{2})\.zip$")
 DEVELOPMENT = (datetime(2020, 1, 1, tzinfo=UTC), datetime(2024, 1, 1, tzinfo=UTC))
 
 
@@ -210,6 +212,22 @@ def run_validation(candles: Sequence[Candle], daily: Sequence[Candle],
     for name, start, end in segments:
         references[name] = (candles[start].timestamp, candles[end - 1].timestamp, end - start)
     return evaluations, select(evaluations), references
+
+
+def reject_holdout_files(files: Sequence[Path]) -> None:
+    """Rechaza, solo por el NOMBRE y antes de abrirlos, los ZIP mensuales desde 2026-10.
+
+    Revisión de Codex de I3: la validación no debe ni leer esos datos. Un nombre
+    sin mes reconocible (…-AAAA-MM.zip) también se rechaza.
+    """
+    for path in files:
+        match = MONTH_IN_NAME.search(path.name)
+        if not match:
+            raise DataValidationError(f"{path.name}: no se reconoce el mes en el nombre")
+        year, month = int(match["year"]), int(match["month"])
+        if (year, month) >= (HOLDOUT_START.year, HOLDOUT_START.month):
+            raise DataValidationError(
+                f"{path.name}: es de 2026-10 o posterior (separación u holdout); no se lee")
 
 
 def baseline_signals(closes: Sequence[float]) -> list[Signal]:
@@ -384,6 +402,7 @@ def main(argv: Sequence[str] | None = None, now: datetime | None = None) -> int:
         daily_files = sorted(args.daily.glob("*.zip"))
         if not daily_files:
             raise DataValidationError(f"{args.daily}: no contiene archivos .zip")
+        reject_holdout_files(daily_files)  # antes de abrir, leer o calcular el hash de nada
         if args.command == "daily-manifest":
             args.out.mkdir(parents=True, exist_ok=True)
             with daily_manifest.open("x", encoding="utf-8", newline="") as handle:
@@ -391,6 +410,7 @@ def main(argv: Sequence[str] | None = None, now: datetime | None = None) -> int:
             print(f"Manifiesto diario creado: {daily_manifest} ({len(daily_files)} archivos)")
             return 0
         files = zip_files(args.data)
+        reject_holdout_files(files)
         for path, listed in ((manifest, files), (daily_manifest, daily_files)):
             problems = check_manifest(path, listed)
             if problems:
