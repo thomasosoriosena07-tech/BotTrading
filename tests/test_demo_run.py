@@ -652,3 +652,59 @@ def test_hard_linked_journal_is_replaced_not_appended_through(tmp_path):
     append_run(journal, at.date(), at, "ok", 0, "sin incidencias")
     assert victim.read_text(encoding="utf-8") == header  # el archivo enlazado no cambia
     assert [e.outcome for e in read_runs(journal)] == ["ok"]
+
+
+# --- cotización justo antes del envío (opción 1, 2026-10-15) ---------------------------
+
+
+def test_each_new_order_is_quoted_right_before_its_post(world):
+    from bottrading.demo_report import read_quotes
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    exchange.calls.clear()
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0
+    planned = expected_intents(data)
+    quotes = read_quotes(paths.quotes)
+    assert set(quotes) == {i.client_order_id for i in planned}
+    for quote in quotes.values():
+        assert (quote.bid, quote.ask) == (exchange.price - 1, exchange.price + 1)
+    # Cada POST va precedido (en algún momento anterior) de su bookTicker.
+    calls = exchange.calls
+    first_post = calls.index(("POST", "/api/v3/order"))
+    assert ("GET", "/api/v3/ticker/bookTicker") in calls[:first_post]
+    assert "Calidad de ejecución" in paths.report.read_text(encoding="utf-8")
+    assert "Slippage real medio" in paths.report.read_text(encoding="utf-8")
+    # Repetir no envía nada y no añade cotizaciones.
+    before = paths.quotes.read_bytes()
+    run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert paths.quotes.read_bytes() == before
+
+
+def test_quote_failure_never_blocks_the_order(world):
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    original = exchange.answer
+
+    def no_ticker(method, path, params):
+        if path == "/api/v3/ticker/bookTicker":
+            return 500, {"code": -1000, "msg": "x"}
+        return original(method, path, params)
+    exchange.answer = no_ticker
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0 and "AVISO: sin cotización del envío" in text
+    assert len(exchange.posts()) == len(expected_intents(data))
+    assert not paths.quotes.exists()
+
+
+def test_simulation_never_quotes(world):
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    run(world, "run")  # sin consentimiento: solo muestra lo que haría
+    assert not paths.quotes.exists()
+
+
+def test_quotes_file_is_a_validated_private_output(world):
+    data, paths, exchange = world
+    assert paths.quotes in paths.written_files()
+    assert paths.quotes.parent == paths.ledger.parent

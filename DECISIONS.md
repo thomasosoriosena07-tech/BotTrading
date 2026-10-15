@@ -887,6 +887,15 @@ quiero que automaticemos el bot lo mas rapido"):
   comisión, retraso, rechazos) y criterio de 30 días sin discrepancias.
 - Una LIMIT_BLOCKED no se anota en el registro (el ledger no tiene ese
   evento): el comando se detiene con DETENIDO y no envía nada ese día.
+- **Horario y slippage real (2026-10-15; usuario: "entonces la 1 manos a la obra").**
+  - **Contexto:** la demo corre cuando el PC está disponible: la tarea es a las 08:00 local (13:00 UTC) y arranca al encender el PC si está apagado. Es decir, entre 13 y 18 o más horas después de la apertura de las 00:00 UTC que usa el modelo.
+  - **Consecuencia:** "vs apertura" y "vs modelo" mezclan el movimiento del mercado en esas horas con la calidad de la ejecución. Primer caso: +70,8 pb frente al modelo con 3,9 h de retraso.
+  - **Decisión (opción 1):** se mantiene el horario, sin servidor. La opción 3 (servidor siempre encendido) se descarta por ahora: exigiría sacar la clave demo y un token de GitHub de este PC, rehacer el código específico de Windows y tener un servidor de pago. Solo tendría sentido ante una futura decisión de dinero real, que está prohibida.
+  - **Implementación:**
+    - Justo antes de cada envío nuevo, el bot lee el mejor bid/ask (bookTicker, ya en la tabla cerrada; solo lectura) y lo guarda en el archivo privado `send_quotes.csv`. La ruta efectiva se valida y la escritura no sigue enlaces.
+    - Si la lectura falla, la orden NO se bloquea: el informe muestra "n/d".
+    - El informe separa el **slippage real** (precio medio frente al ask al comprar o al bid al vender) del **desfase horario** (esa cotización frente a la apertura), además del diferencial y la latencia.
+  - **F6** evalúa la calidad de la ejecución con el slippage real. El desfase horario se informa como contexto. Las órdenes anteriores a este cambio (la primera compra de BTC) no tienen cotización.
 
 ## D031 — Protocolo del experimento intradía 15m EXP-15M-001 (T022, CONGELADO ANTES de implementar)
 Estado: Aprobada por el usuario ("si apruebo tu recomendacion", 2026-10-14) tras cuatro

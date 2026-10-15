@@ -1,5 +1,6 @@
 """Informe de ejecución demo (D030, F5): métricas, diario y racha. Sin red."""
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -9,10 +10,13 @@ from bottrading.data import Candle
 from bottrading.demo_ledger import OrderRecord
 from bottrading.demo_report import (
     RunEntry,
+    SendQuote,
+    append_quote,
     append_run,
     clean_streak,
     collect_fills,
     fill_metrics,
+    read_quotes,
     read_runs,
     render_report,
 )
@@ -129,3 +133,74 @@ def test_render_report_states_scope_and_numbers():
     assert "0.100 %" in text  # comisión real calculada
     empty = render_report([], {}, [], date(2026, 10, 14))
     assert "(ninguna)" in empty and "0 de 30" in empty
+
+
+# --- slippage real frente a la cotización del envío (opción 1, 2026-10-15) ------------
+
+CAPTURED = datetime(2026, 10, 14, 3, 54, 30, tzinfo=timezone.utc)
+
+
+def test_buy_separates_real_slippage_from_timing():
+    m = fill_metrics(RECORD, ORDER, [trade("0.01193", "999.73")], OPENS, "BTC")
+    quote = SendQuote(BUY.client_order_id, CAPTURED, Decimal("83790"), Decimal("83795"))
+    q = replace(m, send_quote=quote)
+    assert q.send_reference == Decimal("83795")  # al comprar, el ask
+    assert q.slippage_bps == (q.average_price - 83795) / Decimal(83795) * 10_000
+    assert q.timing_bps == (Decimal(83795) - 83000) / Decimal(83000) * 10_000  # mercado, no ejecución
+    assert q.spread_bps == Decimal(5) / Decimal("83792.5") * 10_000
+    assert q.latency_seconds == Decimal(6)
+    assert m.slippage_bps is None and m.timing_bps is None  # sin cotización: n/d
+
+
+def test_sell_uses_the_bid_and_lower_is_worse():
+    sell = OrderIntent("BTCUSDT", Signal.SELL, SIGNAL, quantity=0.01)
+    record = OrderRecord(sell, "FINAL", "FILLED", 0.01)
+    order = dict(ORDER, side="SELL", clientOrderId=sell.client_order_id)
+    m = fill_metrics(record, order, [trade("0.01", "820", fee="0.82", asset="USDT")], OPENS, "BTC")
+    q = replace(m, send_quote=SendQuote(sell.client_order_id, CAPTURED, Decimal("82100"),
+                                        Decimal("82110")))
+    assert q.send_reference == Decimal("82100")
+    assert q.slippage_bps > 0  # vendió a 82000, por debajo del bid de 82100
+    assert q.timing_bps > 0  # el bid ya estaba por debajo de la apertura (83000)
+
+
+def test_quotes_round_trip_and_the_last_one_per_order_wins(tmp_path):
+    path = tmp_path / "send_quotes.csv"
+    first = SendQuote("bt-A", CAPTURED, Decimal("1.5"), Decimal("1.6"))
+    retry = SendQuote("bt-A", CAPTURED + timedelta(days=1), Decimal("2.5"), Decimal("2.6"))
+    other = SendQuote("bt-B", CAPTURED, Decimal("10"), Decimal("10"))
+    for quote in (first, other, retry):
+        append_quote(path, quote)
+    assert read_quotes(path) == {"bt-A": retry, "bt-B": other}
+    assert read_quotes(tmp_path / "no-existe.csv") == {}
+
+
+@pytest.mark.parametrize("bid,ask", [("0", "1"), ("2", "1"), ("NaN", "1"), ("-1", "1")])
+def test_invalid_quotes_are_never_written(tmp_path, bid, ask):
+    path = tmp_path / "send_quotes.csv"
+    with pytest.raises(ValueError):
+        append_quote(path, SendQuote("bt-A", CAPTURED, Decimal(bid), Decimal(ask)))
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("content", [
+    "otra,cabecera\n",
+    "client_order_id,captured_at,bid,ask\nbt-A,2026-10-14T03:54:30,1,2\n",  # sin zona horaria
+    "client_order_id,captured_at,bid,ask\nbt-A,2026-10-14T03:54:30+00:00,3,2\n",  # bid > ask
+    "client_order_id,captured_at,bid,ask\nbt-A,2026-10-14T03:54:30+00:00,1\n",
+])
+def test_corrupt_quote_files_are_rejected(tmp_path, content):
+    path = tmp_path / "send_quotes.csv"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError):
+        read_quotes(path)
+
+
+def test_report_shows_real_slippage_and_marks_orders_without_quote():
+    m = fill_metrics(RECORD, ORDER, [trade("0.01193", "999.73")], OPENS, "BTC")
+    quoted = replace(m, client_order_id="bt-X",
+                     send_quote=SendQuote("bt-X", CAPTURED, Decimal("83790"), Decimal("83795")))
+    text = render_report([m, quoted], {}, [], date(2026, 10, 15))
+    assert "## Calidad de ejecución (frente a la cotización del envío)" in text
+    assert "Slippage real medio:" in text and "en 1 órdenes con cotización" in text
+    assert "sin cotización" in text

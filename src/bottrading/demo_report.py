@@ -5,6 +5,11 @@ paper (D014): ejecución a la APERTURA del día con 0,05 % de deslizamiento
 adverso y 0,1 % de comisión. Mide aparte, nunca como un único "resultado":
 
 - precio medio real frente a la apertura y frente al precio modelado (pb);
+- (opción 1 de la revisión del 2026-10-15) SLIPPAGE REAL frente a la mejor
+  cotización justo antes del envío (ask al comprar, bid al vender) y, aparte,
+  el DESFASE HORARIO: cuánto se movió el mercado entre la apertura del modelo
+  y el momento del envío. La demo corre cuando el PC está disponible, así que
+  el desfase horario no mide la calidad de la ejecución; el slippage real sí;
 - comisión real en % (si se cobra en BNB se indica sin convertir);
 - retraso desde las 00:00 UTC del día de ejecución;
 - rechazos y órdenes sin resolver;
@@ -20,7 +25,7 @@ import io
 import os
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -56,6 +61,40 @@ class FillMetrics:
     fee_rate: Decimal | None  # comisión / nominal (None: cobrada en otro activo)
     fee_asset: str
     fee_amount: Decimal = Decimal(0)  # importe cobrado en fee_asset (revisión de Codex)
+    send_quote: "SendQuote | None" = None  # mejor bid/ask justo antes del envío
+
+    @property
+    def send_reference(self) -> Decimal | None:
+        """Mejor precio disponible al enviar: ask al comprar, bid al vender."""
+        if self.send_quote is None:
+            return None
+        return self.send_quote.ask if self.side == "BUY" else self.send_quote.bid
+
+    @property
+    def slippage_bps(self) -> Decimal | None:
+        """Slippage real: precio medio frente a la mejor cotización del envío (positivo = peor)."""
+        return _adverse_bps(self.side, self.average_price, self.send_reference)
+
+    @property
+    def timing_bps(self) -> Decimal | None:
+        """Desfase horario: cotización del envío frente a la apertura del modelo (positivo = peor)."""
+        if self.send_reference is None:
+            return None
+        return _adverse_bps(self.side, self.send_reference, self.open_price)
+
+    @property
+    def spread_bps(self) -> Decimal | None:
+        if self.send_quote is None:
+            return None
+        bid, ask = self.send_quote.bid, self.send_quote.ask
+        return (ask - bid) / ((ask + bid) / 2) * 10_000
+
+    @property
+    def latency_seconds(self) -> Decimal | None:
+        """Segundos entre la cotización y la primera ejecución."""
+        if self.send_quote is None or self.executed_at is None:
+            return None
+        return Decimal((self.executed_at - self.send_quote.captured_at).total_seconds())
 
     @property
     def modeled_price(self) -> Decimal | None:
@@ -116,8 +155,12 @@ def fill_metrics(record: OrderRecord, order: Mapping, trades: Sequence[Mapping],
 def collect_fills(records: Mapping[str, OrderRecord], orders: Mapping[str, Sequence[Mapping]],
                   trades: Mapping[str, Sequence[Mapping]],
                   candles: Mapping[str, Sequence[Candle]],
-                  base_assets: Mapping[str, str]) -> list[FillMetrics]:
-    """Una entrada por orden del bot con ejecución (> 0) en el historial reconciliado."""
+                  base_assets: Mapping[str, str],
+                  quotes: Mapping[str, "SendQuote"] | None = None) -> list[FillMetrics]:
+    """Una entrada por orden del bot con ejecución (> 0) en el historial reconciliado.
+
+    `quotes`: cotización del envío por clientOrderId (sin ella, "n/d")."""
+    quotes = quotes or {}
     fills = []
     for symbol, symbol_orders in orders.items():
         opens = {c.timestamp.date(): Decimal(repr(c.open)) for c in candles.get(symbol, ())}
@@ -126,9 +169,63 @@ def collect_fills(records: Mapping[str, OrderRecord], orders: Mapping[str, Seque
             own = [t for t in trades.get(symbol, ()) if t.get("orderId") == order.get("orderId")]
             if record is None or not own or Decimal(order.get("executedQty", "0")) == 0:
                 continue
-            fills.append(fill_metrics(record, order, own, opens, base_assets[symbol]))
+            fill = fill_metrics(record, order, own, opens, base_assets[symbol])
+            quote = quotes.get(fill.client_order_id)
+            fills.append(replace(fill, send_quote=quote) if quote else fill)
     return sorted(fills, key=lambda f: (f.executed_at or datetime.min.replace(tzinfo=timezone.utc),
                                         f.client_order_id))
+
+
+# --- cotizaciones del envío -------------------------------------------------------------
+
+QUOTE_COLUMNS = ["client_order_id", "captured_at", "bid", "ask"]
+
+
+@dataclass(frozen=True)
+class SendQuote:
+    """Mejor bid/ask de la cuenta demo justo antes de enviar una orden nueva."""
+
+    client_order_id: str
+    captured_at: datetime
+    bid: Decimal
+    ask: Decimal
+
+
+def valid_quote(bid: Decimal, ask: Decimal) -> bool:
+    return bid.is_finite() and ask.is_finite() and 0 < bid <= ask
+
+
+def append_quote(path: Path, quote: SendQuote) -> None:
+    """Añade una cotización al registro privado (solo de añadir; sin seguir enlaces)."""
+    if not valid_quote(quote.bid, quote.ask):
+        raise ValueError("cotización no válida")
+    previous = path.read_bytes() if path.exists() else b""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    if not previous:
+        writer.writerow(QUOTE_COLUMNS)
+    writer.writerow([quote.client_order_id, quote.captured_at.isoformat(timespec="milliseconds"),
+                     f"{quote.bid:f}", f"{quote.ask:f}"])
+    write_private_file(path, previous + buffer.getvalue().encode("utf-8"))
+
+
+def read_quotes(path: Path) -> dict[str, SendQuote]:
+    """Última cotización registrada de cada orden: la tomada justo antes de su envío
+    (una orden ya registrada no vuelve a cotizarse)."""
+    if not path.exists():
+        return {}
+    rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
+    if not rows or rows[0] != QUOTE_COLUMNS:
+        raise ValueError(f"{path.name}: cabecera inesperada")
+    quotes = {}
+    for row in rows[1:]:
+        if len(row) != len(QUOTE_COLUMNS):
+            raise ValueError(f"{path.name}: fila no válida")
+        quote = SendQuote(row[0], datetime.fromisoformat(row[1]), Decimal(row[2]), Decimal(row[3]))
+        if quote.captured_at.tzinfo is None or not valid_quote(quote.bid, quote.ask):
+            raise ValueError(f"{path.name}: fila no válida")
+        quotes[quote.client_order_id] = quote
+    return quotes
 
 
 # --- diario de ejecuciones de run -----------------------------------------------------
@@ -191,6 +288,47 @@ def _fmt(value: Decimal | None, digits: int = 2, suffix: str = "") -> str:
     return "n/d" if value is None else f"{value:.{digits}f}{suffix}"
 
 
+def _quality_section(fills: Sequence[FillMetrics]) -> list[str]:
+    """Slippage real (frente a la cotización del envío) separado del desfase horario."""
+    quoted = [f for f in fills if f.send_quote is not None]
+    lines = [
+        "## Calidad de ejecución (frente a la cotización del envío)",
+        "",
+        "La demo corre cuando el PC está disponible, no a la apertura del modelo. Por eso",
+        "\"vs apertura\" mezcla dos cosas que aquí se separan:",
+        "- **Slippage real**: precio medio frente a la mejor cotización justo antes de",
+        "  enviar (ask al comprar, bid al vender). Mide la calidad de la ejecución.",
+        "- **Desfase horario**: esa cotización frente a la apertura del modelo. Es",
+        "  movimiento del mercado por la hora de ejecución, no un coste de la ejecución.",
+        "",
+    ]
+    if quoted:
+        mean = sum((f.slippage_bps for f in quoted), Decimal(0)) / len(quoted)
+        lines.append(f"Slippage real medio: {_fmt(mean, 1)} pb en {len(quoted)} órdenes "
+                     "con cotización.")
+        lines.append("")
+    lines += [
+        "| Orden | Cotización (UTC) | Bid | Ask | Diferencial (pb) | Precio medio | "
+        "Slippage real (pb) | Desfase horario (pb) | Latencia (s) |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for f in fills:
+        q = f.send_quote
+        if q is None:
+            lines.append(f"| {f.client_order_id} | sin cotización (orden anterior al registro "
+                         f"o lectura fallida) | | | | {_fmt(f.average_price, 4)} | n/d | n/d | n/d |")
+            continue
+        lines.append(
+            f"| {f.client_order_id} | {q.captured_at.strftime('%Y-%m-%d %H:%M:%S')} | "
+            f"{_fmt(q.bid, 4)} | {_fmt(q.ask, 4)} | {_fmt(f.spread_bps, 2)} | "
+            f"{_fmt(f.average_price, 4)} | {_fmt(f.slippage_bps, 1)} | "
+            f"{_fmt(f.timing_bps, 1) if f.open_price is not None else 'vela pendiente'} | "
+            f"{_fmt(f.latency_seconds, 1)} |")
+    if not fills:
+        lines.append("| (ninguna) | | | | | | | | |")
+    return lines + [""]
+
+
 def render_report(fills: Sequence[FillMetrics], records: Mapping[str, OrderRecord],
                   runs: Sequence[RunEntry], today: date) -> str:
     rejected = [r for r in records.values() if r.status == "REJECTED"]
@@ -230,7 +368,8 @@ def render_report(fills: Sequence[FillMetrics], records: Mapping[str, OrderRecor
     if not fills:
         lines.append("| (ninguna) | | | | | | | | | |")
     lines += ["", f"Comisión del modelo: {model_fee:.3f} %. Positivo en pb = peor que la "
-              "referencia; la apertura se completa al descargar la vela del día.", "",
-              "## Incidencias (ejecuciones detenidas)", ""]
+              "referencia; la apertura se completa al descargar la vela del día.", ""]
+    lines += _quality_section(fills)
+    lines += ["## Incidencias (ejecuciones detenidas)", ""]
     lines += [f"- {r.at}: {redact(r.detail)}" for r in stops[-20:]] or ["- (ninguna)"]
     return "\n".join(lines) + "\n"

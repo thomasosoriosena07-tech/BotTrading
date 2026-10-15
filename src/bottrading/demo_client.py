@@ -59,7 +59,15 @@ from bottrading.demo_ledger import (
     write_private_file,
 )
 from bottrading.demo_dashboard import render_demo_dashboard
-from bottrading.demo_report import append_run, collect_fills, read_runs, render_report
+from bottrading.demo_report import (
+    SendQuote,
+    append_quote,
+    append_run,
+    collect_fills,
+    read_quotes,
+    read_runs,
+    render_report,
+)
 from bottrading.demo_reconcile import (
     load_baseline,
     reconcile,
@@ -679,6 +687,11 @@ class DemoPaths:
         """Panel HTML privado de la cuenta demo (F5); no se publica."""
         return self.ledger.with_name("dashboard.html")
 
+    @property
+    def quotes(self) -> Path:
+        """Mejor bid/ask justo antes de cada envío (slippage real); privado."""
+        return self.ledger.with_name("send_quotes.csv")
+
     def written_files(self) -> list[Path]:
         """Todo archivo que el bot puede escribir (revisión de Codex: se valida la
         ruta EFECTIVA de cada uno, enlaces incluidos, no solo la carpeta)."""
@@ -688,7 +701,7 @@ class DemoPaths:
                 anchor.with_name(anchor.name + ".part"),
                 self.baseline, self.baseline.with_name(self.baseline.name + ".anterior"),
                 self.baseline.with_name(self.baseline.name + ".nuevo"),
-                self.kill_switch, self.runs, self.report, self.dashboard]
+                self.kill_switch, self.runs, self.report, self.dashboard, self.quotes]
 
 
 def _check_private(path: Path) -> None:
@@ -808,20 +821,45 @@ def _prices(client) -> dict:
     return prices
 
 
+def _capture_quote(client, paths, clock, symbol: str, client_order_id: str, out) -> bool:
+    """Guarda el mejor bid/ask justo antes de enviar (opción 1, 2026-10-15).
+
+    Solo lectura (bookTicker, ya en la tabla cerrada). Un fallo se avisa y NO
+    impide la orden: sin cotización, el informe muestra "n/d" para el slippage real.
+    """
+    problem = None
+    try:
+        ticker = client.book_ticker(symbol)
+        bid, ask = Decimal(ticker["bidPrice"]), Decimal(ticker["askPrice"])
+        captured_at = datetime.fromtimestamp(clock(), timezone.utc)
+        _check_private(paths.quotes)
+        append_quote(paths.quotes, SendQuote(client_order_id, captured_at, bid, ask))
+    except (DemoClientError, KeyError, TypeError, ArithmeticError, OSError, ValueError,
+            StopTheDay) as error:
+        problem = type(error).__name__
+    if problem:
+        out(f"AVISO: sin cotización del envío para {client_order_id} ({problem}); "
+            "la orden sigue adelante")
+        return False
+    return True
+
+
 def _write_report(client, paths, records, recon, candles, infos, today, out) -> bool:
     """Escribe el informe y el panel privados. Un fallo del diario o del informe
     se avisa pero no cambia el resultado de run (revisión de Codex); devuelve
     si se escribieron."""
-    fills = collect_fills(records, recon.orders, recon.trades, candles,
-                          {s: info.base_asset for s, info in infos.items()})
-    prices = _prices(client)
-    runs, problem = [], None
+    runs, quotes, problem = [], {}, None
     try:
         runs = read_runs(paths.runs)
-    except (OSError, ValueError) as error:
+        quotes = read_quotes(paths.quotes)
+    except (OSError, ValueError, ArithmeticError) as error:
         problem = type(error).__name__
+    fills = collect_fills(records, recon.orders, recon.trades, candles,
+                          {s: info.base_asset for s, info in infos.items()}, quotes)
+    prices = _prices(client)
     if problem:
-        out(f"AVISO: no se pudo leer el diario ({problem}); el resultado de run no cambia")
+        out(f"AVISO: no se pudo leer el diario o las cotizaciones ({problem}); "
+            "el resultado de run no cambia")
         return False
     now = datetime.fromtimestamp(client.clock(), timezone.utc)
     pages = [  # independientes: un destino bloqueado no impide el otro (revisión de Codex)
@@ -1029,6 +1067,8 @@ def _run(client, credentials, clock, paths, out, send, data_dir, sleep) -> int:
         sent_before = {i.client_order_id: ledger.sent_count(i.client_order_id) for i in intents}
         incidents = []
         for intent in intents:
+            if ledger.record(intent.client_order_id) is None:  # solo antes de un envío nuevo
+                _capture_quote(client, paths, clock, intent.symbol, intent.client_order_id, out)
             record = execute_intent(ledger, gateway, intent, sleep)
             out(f"  {intent.client_order_id}: {record.state} {record.status} "
                 f"ejecutado {record.executed_qty}")

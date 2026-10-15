@@ -1199,3 +1199,25 @@ passed, 4 skipped.
   registro de cambios) y en D031.
 - La rama experiment/15m (último commit bbff6ae) y el worktree
   C:/Users/thoma/bottrading-exp15m quedan como archivo; nada se fusiona con main.
+
+## Registro T021 F5: slippage real frente a la cotización del envío (Claude Code, 2026-10-15)
+Archivos: src/bottrading/demo_client.py (_capture_quote, DemoPaths.quotes,
+lectura en _write_report), src/bottrading/demo_report.py (SendQuote,
+append_quote, read_quotes, métricas slippage_bps, timing_bps, spread_bps y
+latency_seconds, sección "Calidad de ejecución"), tests/test_demo_report.py,
+tests/test_demo_run.py y DECISIONS.md (nota de D030).
+- Revisión de la automatización del 15: paper OK (datos hasta el 14, sin
+  operaciones; commit automático d6bc760) y demo OK sin órdenes. runs.csv
+  creado: racha 1 de 30. Primer dato frente al modelo: +70,8 pb, explicado por
+  3,9 h de retraso y no por la ejecución.
+- Decisión del usuario (opción 1): mantener el horario y medir el slippage real
+  frente al bid/ask leído justo antes de cada envío nuevo. Una lectura fallida
+  no bloquea la orden. Una orden ya registrada no se vuelve a cotizar. En
+  simulación no se cotiza.
+- Pruebas: 765 passed, 3 skipped (antes 749). Nuevas: cotización antes del
+  POST, ninguna en las repeticiones, fallo de bookTicker sin bloqueo, sin
+  cotización en simulación, archivo privado validado, signos BUY/SELL, archivo
+  corrupto y última cotización por orden.
+- `demo_client report` real (solo lectura): sección nueva correcta; la primera
+  orden sale "sin cotización". El desfase del reloj ya es de 120 ms (Windows
+  sincronizado).
