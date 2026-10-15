@@ -708,3 +708,15 @@ def test_quotes_file_is_a_validated_private_output(world):
     data, paths, exchange = world
     assert paths.quotes in paths.written_files()
     assert paths.quotes.parent == paths.ledger.parent
+
+
+def test_corrupt_quotes_file_warns_without_stopping_the_run(world):
+    import csv
+    data, paths, exchange = world
+    assert run(world, "init")[0] == 0
+    paths.quotes.write_text("client_order_id,captured_at,bid,ask\n"
+                            + "x" * (csv.field_size_limit() + 10) + "\n", encoding="utf-8")
+    code, text = run(world, "run", "--send-orders", env={ORDERS_ENV: "1"})
+    assert code == 0 and "Reconciliación posterior: OK" in text
+    assert "AVISO: no se pudo leer el diario o las cotizaciones (ValueError)" in text
+    assert "DETENIDO" not in text

@@ -896,6 +896,8 @@ quiero que automaticemos el bot lo mas rapido"):
     - Si la lectura falla, la orden NO se bloquea: el informe muestra "n/d".
     - El informe separa el **slippage real** (precio medio frente al ask al comprar o al bid al vender) del **desfase horario** (esa cotización frente a la apertura), además del diferencial y la latencia.
   - **F6** evalúa la calidad de la ejecución con el slippage real. El desfase horario se informa como contexto. Las órdenes anteriores a este cambio (la primera compra de BTC) no tienen cotización.
+  - **Revisión de Codex:** sin defectos en idempotencia, privacidad, signos ni endpoints. Se corrigió que un CSV muy corrupto (csv.Error) escapaba al aviso: ahora es ValueError, que avisa sin detener run.
+  - **Límite aceptado:** `send_quotes.csv` no tiene ancla ni checksum. Una alteración que siga siendo un CSV válido falsearía el slippage del informe sin aviso. Es coherente con el modelo de amenazas de D030, que deja fuera la manipulación local de la carpeta privada. Solo afecta al informe, nunca a las órdenes ni al registro de órdenes.
 
 ## D031 — Protocolo del experimento intradía 15m EXP-15M-001 (T022, CONGELADO ANTES de implementar)
 Estado: Aprobada por el usuario ("si apruebo tu recomendacion", 2026-10-14) tras cuatro

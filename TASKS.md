@@ -1221,3 +1221,9 @@ tests/test_demo_run.py y DECISIONS.md (nota de D030).
 - `demo_client report` real (solo lectura): sección nueva correcta; la primera
   orden sale "sin cotización". El desfase del reloj ya es de 120 ms (Windows
   sincronizado).
+- Revisión de Codex de 77f6c9a: la cotización no altera el protocolo de envío,
+  es privada, los signos son correctos y no hay endpoints nuevos. P2 corregido:
+  csv.Error de un archivo muy corrupto (quotes o runs) ahora es ValueError, que
+  avisa sin detener run (3 pruebas). P3 anotado en D030 como límite aceptado: la
+  alteración válida de send_quotes.csv no se detecta y solo afecta al informe.
+  768 passed, 3 skipped.

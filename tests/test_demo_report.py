@@ -204,3 +204,15 @@ def test_report_shows_real_slippage_and_marks_orders_without_quote():
     assert "## Calidad de ejecución (frente a la cotización del envío)" in text
     assert "Slippage real medio:" in text and "en 1 órdenes con cotización" in text
     assert "sin cotización" in text
+
+
+@pytest.mark.parametrize("reader,header", [(read_quotes, "client_order_id,captured_at,bid,ask"),
+                                           (read_runs, "date,at,outcome,orders,detail")])
+def test_csv_errors_become_value_errors(tmp_path, reader, header):
+    # Revisión de Codex: un campo mayor que el límite del lector CSV lanzaba csv.Error,
+    # que nadie capturaba; ahora es ValueError (aviso, sin detener run).
+    import csv
+    path = tmp_path / "f.csv"
+    path.write_text(header + "\n" + "x" * (csv.field_size_limit() + 10) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="CSV no válido"):
+        reader(path)

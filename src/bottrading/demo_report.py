@@ -176,6 +176,16 @@ def collect_fills(records: Mapping[str, OrderRecord], orders: Mapping[str, Seque
                                         f.client_order_id))
 
 
+def _csv_rows(path: Path) -> list[list[str]]:
+    """Filas de un CSV privado. Cualquier error de formato (también csv.Error, p. ej.
+    un campo enorme) se convierte en ValueError, que quien llama trata como aviso
+    sin detener run (revisión de Codex)."""
+    try:
+        return list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
+    except csv.Error:
+        raise ValueError(f"{path.name}: CSV no válido") from None
+
+
 # --- cotizaciones del envío -------------------------------------------------------------
 
 QUOTE_COLUMNS = ["client_order_id", "captured_at", "bid", "ask"]
@@ -214,7 +224,7 @@ def read_quotes(path: Path) -> dict[str, SendQuote]:
     (una orden ya registrada no vuelve a cotizarse)."""
     if not path.exists():
         return {}
-    rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
+    rows = _csv_rows(path)
     if not rows or rows[0] != QUOTE_COLUMNS:
         raise ValueError(f"{path.name}: cabecera inesperada")
     quotes = {}
@@ -260,7 +270,7 @@ def append_run(path: Path, day: date, at: datetime, outcome: str, orders: int | 
 def read_runs(path: Path) -> list[RunEntry]:
     if not path.exists():
         return []
-    rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8"))))
+    rows = _csv_rows(path)
     if not rows or rows[0] != RUN_COLUMNS:
         raise ValueError(f"{path.name}: cabecera inesperada")
     return [RunEntry(date.fromisoformat(r[0]), r[1], r[2], int(r[3]) if r[3] else None, r[4])
