@@ -4,16 +4,16 @@
 
 Protocolo fijado antes de empezar (DECISIONS.md D027): estrategia congelada, costes base, capital 10 000 por activo, velas diarias cerradas, sin cambios durante la prueba.
 
-- Datos hasta: **2026-11-24** (55 días simulados)
-- Próximo punto de control: 6 meses (preliminar) el 2027-03-31 (faltan 127 días)
+- Datos hasta: **2026-11-25** (56 días simulados)
+- Próximo punto de control: 6 meses (preliminar) el 2027-03-31 (faltan 126 días)
 
 ## Situación actual
 
 | Activo | Posición | Retorno estrategia | Retorno buy-and-hold | Drawdown estrategia | Drawdown buy-and-hold | Operaciones |
 |---|---|---:|---:|---:|---:|---:|
-| BTCUSDT | fuera | -2.93 % | -28.67 % | 6.05 % | 31.87 % | 2 |
-| ETHUSDT | fuera | -8.14 % | -37.64 % | 9.38 % | 40.48 % | 2 |
-| SOLUSDT | fuera | -10.74 % | -41.18 % | 13.16 % | 43.36 % | 2 |
+| BTCUSDT | fuera | -2.93 % | -27.92 % | 6.05 % | 31.87 % | 2 |
+| ETHUSDT | fuera | -8.14 % | -37.17 % | 9.38 % | 40.48 % | 2 |
+| SOLUSDT | fuera | -10.74 % | -40.52 % | 13.16 % | 43.36 % | 2 |
 
 Retornos netos de costes, con la posición abierta valorada a su liquidación. Con pocos días, las métricas anualizadas y el Sharpe no están disponibles o no son representativos.
 
